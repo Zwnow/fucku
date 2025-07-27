@@ -7,17 +7,22 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func init() {
+func setupApp() error {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatalf("Failed to load environment: %v", err)
+		return err
 	}
 	err = config.SetupDatabase()
 	if err != nil {
-		log.Fatalf("Error setting up database: %v", err)
+		return err
 	}
+	return nil
 }
 
 func main() {
+	err := setupApp()
+	if err != nil {
+		log.Fatalf("App setup failed: %v", err)
+	}
 	log.Println("Hello world")
 }
