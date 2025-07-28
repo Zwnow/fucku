@@ -2,13 +2,11 @@ package config_test
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"testing"
 
 	"fucku/testhelpers"
-
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx"
 )
 
 func TestMain(m *testing.M) {
@@ -20,10 +18,16 @@ func TestMain(m *testing.M) {
 }
 
 func TestDatabaseConnection(t *testing.T) {
-	connStr := "user=postgres password=postgres port=5432 dbname=fucku_test sslmode=disable"
-	db, err := sql.Open("postgres", connStr)
+	config := pgx.ConnConfig{
+		User:     "postgres",
+		Password: "postgres",
+		Database: "postgres",
+		Port:     5432,
+		Host:     "localhost",
+	}
+	conn, err := pgx.Connect(config)
 	if err != nil {
 		t.Fatalf("Failed to open database connection: %v", err)
 	}
-	defer db.Close()
+	defer conn.Close()
 }
