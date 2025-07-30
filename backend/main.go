@@ -11,15 +11,17 @@ import (
 	"os/signal"
 	"strings"
 
-	"fucku/internal"
+	database "fucku/internal/database"
+	users "fucku/internal/users"
+	"fucku/pkg"
 
 	"github.com/joho/godotenv"
 )
 
 // We setup the database prior to running the app.
-func setupApp(db *internal.Database) error {
+func setupApp(db *database.Database) error {
 	// If it already exists, postgres will error accordingly, which we ignore.
-	err := internal.SetupDatabase(db)
+	err := database.SetupDatabase(db)
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
 			return err
@@ -40,7 +42,7 @@ func main() {
 
 // The actual entry point used to setup the app, register routes and serve the webserver
 func run(ctx context.Context, w io.Writer) error {
-	logger := internal.NewLogger("app.log", slog.LevelInfo)
+	logger := pkg.NewLogger("app.log", slog.LevelInfo)
 	slog.SetDefault(logger)
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
@@ -51,7 +53,7 @@ func run(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
-	db, err := internal.NewDatabase(os.Getenv("DB_URL"))
+	db, err := database.NewDatabase(os.Getenv("DB_URL"))
 	if err != nil {
 		logger.Error("failed to initialize DB", "error", err)
 		return err
@@ -67,7 +69,7 @@ func run(ctx context.Context, w io.Writer) error {
 
 	// User Routes
 	// mux.Handle("POST /register", testMiddleware(te()))
-	mux.Handle("POST /register", internal.RegisterUser(db, logger))
+	mux.Handle("POST /register", users.RegisterUser(db, logger))
 
 	server := &http.Server{
 		Addr:    ":3000",

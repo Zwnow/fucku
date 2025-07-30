@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	database "fucku/internal/database"
+	utils "fucku/internal/utils"
+
 	"github.com/alexedwards/argon2id"
 )
 
@@ -96,16 +99,16 @@ type User struct {
 	UpdatedAt time.Time
 }
 
-func RegisterUser(db *Database, logger *slog.Logger) http.Handler {
+func RegisterUser(db *database.Database, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uu := NewUnregisteredUser()
 
 		// Parse body
-		err := DecodeJSONBody(w, r, &uu)
+		err := utils.DecodeJSONBody(w, r, &uu)
 		if err != nil {
-			var mr *malformedRequest
+			var mr *utils.MalformedRequest
 			if errors.As(err, &mr) {
-				http.Error(w, mr.msg, mr.status)
+				http.Error(w, mr.Msg, mr.Status)
 				return
 			} else {
 				logger.Error("error while decoding json body in register user", "error", err)

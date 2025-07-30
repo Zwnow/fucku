@@ -73,6 +73,7 @@ func SetupTables(db *Database) error {
 			sql: `
                 CREATE TABLE IF NOT EXISTS tokens (
                     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                    user_id UUID NOT NULL,
                     token_type TEXT NOT NULL,
                     token TEXT UNIQUE NOT NULL,
                     expires_at TIMESTAMP,
