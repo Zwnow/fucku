@@ -10,21 +10,20 @@ import (
 	"os/signal"
 	"strings"
 
-	"fucku/config"
 	"fucku/internal"
 
 	"github.com/joho/godotenv"
 )
 
 // We setup the database prior to running the app.
-func setupApp() error {
+func setupApp(db *internal.Database) error {
 	err := godotenv.Load()
 	if err != nil {
 		return err
 	}
 
 	// If it already exists, postgres will error accordingly, which we ignore.
-	err = config.SetupDatabase()
+	err = internal.SetupDatabase(db)
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
 			return err
@@ -48,21 +47,21 @@ func run(ctx context.Context, w io.Writer) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
-	err := setupApp()
+	db, err := internal.NewDatabase(os.Getenv("DB_URL"))
 	if err != nil {
-		log.Fatalf("App setup failed: %v", err)
+		log.Fatalf("Database setup failed: %v", err)
 	}
 
-	err = internal.InitPool(ctx)
+	err = setupApp(db)
 	if err != nil {
-		log.Fatalf("%v", err)
+		log.Fatalf("App setup failed: %v", err)
 	}
 
 	mux := http.NewServeMux()
 
 	// User Routes
 	// mux.Handle("POST /register", testMiddleware(te()))
-	mux.Handle("POST /register", internal.RegisterUser())
+	mux.Handle("POST /register", internal.RegisterUser(db))
 
 	server := &http.Server{
 		Addr:    ":3000",
@@ -79,8 +78,8 @@ func run(ctx context.Context, w io.Writer) error {
 	<-ctx.Done()
 	log.Println("Shutdown signal received")
 	// Close connection pool
-	if internal.DBPool != nil {
-		internal.DBPool.Close()
+	if db.DBPool != nil {
+		db.DBPool.Close()
 	}
 
 	if err := server.Shutdown(context.Background()); err != nil {

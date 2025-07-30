@@ -98,7 +98,7 @@ type User struct {
 	UpdatedAt time.Time
 }
 
-func RegisterUser() http.Handler {
+func RegisterUser(db *Database) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uu := NewUnregisteredUser()
 
@@ -131,7 +131,9 @@ func RegisterUser() http.Handler {
 
 		// Insert user
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_, err = DBPool.Exec(ctx, `INSERT INTO users (email, username, password) VALUES ($1, $2, $3)`, uu.Email, uu.Username, uu.Password)
+		_, err = db.DBPool.Exec(ctx,
+			`INSERT INTO users (email, username, password) VALUES ($1, $2, $3)`,
+			uu.Email, uu.Username, uu.Password)
 		if err != nil {
 			log.Printf("%v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
