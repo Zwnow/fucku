@@ -3,6 +3,7 @@ package internal_test
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,15 +13,26 @@ import (
 	"fucku/internal"
 )
 
-func TestMain(m *testing.M) {
-	os.Setenv("DB_USER", "postgres")
-	os.Setenv("DB_PASSWORD", "postgres")
-	os.Setenv("DB_NAME", "fucku_dev")
-	os.Setenv("DB_PORT", "5432")
+var (
+	db     *internal.Database
+	logger *slog.Logger
+)
 
-	ctx := context.Background()
-	internal.InitPool(ctx)
+func TestMain(m *testing.M) {
+	os.Setenv("DB_URL", "postgresql://postgres:postgres@localhost:5432/fucku_dev")
+
+	logger = internal.NewLogger("tests.log", slog.LevelInfo)
+
+	var err error
+	db, err = internal.NewDatabase(os.Getenv("DB_URL"))
+	if err != nil {
+		logger.Error("failed to set up database", "error", err)
+		return
+	}
+
 	code := m.Run()
+
+	db.DBPool.Close()
 	os.Exit(code)
 }
 
@@ -30,24 +42,24 @@ func TestRegisterUser(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	internal.RegisterUser().ServeHTTP(w, req)
+	internal.RegisterUser(db, logger).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	var u internal.User
-	row := internal.DBPool.QueryRow(ctx, `SELECT id, username, password, email, created_at, updated_at FROM users WHERE users.username = 'testuser'`)
 	defer cancel()
+
+	var u internal.User
+	row := db.DBPool.QueryRow(ctx,
+		`SELECT id, username, password, email, created_at, updated_at FROM users WHERE users.username = 'testuser'`)
 
 	if err := row.Scan(&u.Id, &u.Username, &u.Password, &u.Email, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		t.Fatalf("Error while parsing user: %v", err)
 	}
 
-	t.Logf("%+v", u)
-
-	_, err := internal.DBPool.Exec(ctx, `DELETE FROM users WHERE users.username = 'testuser'`)
+	_, err := db.DBPool.Exec(ctx, `DELETE FROM users WHERE users.username = 'testuser'`)
 	if err != nil {
 		t.Fatalf("Error cleaning up: %v", err)
 	}

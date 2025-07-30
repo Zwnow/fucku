@@ -2,11 +2,9 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -98,19 +96,21 @@ type User struct {
 	UpdatedAt time.Time
 }
 
-func RegisterUser() http.Handler {
+func RegisterUser(db *Database, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uu := NewUnregisteredUser()
 
 		// Parse body
-		err := decodeJSONBody(w, r, &uu)
+		err := DecodeJSONBody(w, r, &uu)
 		if err != nil {
 			var mr *malformedRequest
 			if errors.As(err, &mr) {
 				http.Error(w, mr.msg, mr.status)
+				return
 			} else {
-				log.Print(err.Error())
+				logger.Error("error while decoding json body in register user", "error", err)
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
 			}
 		}
 
@@ -120,94 +120,33 @@ func RegisterUser() http.Handler {
 		uu.validateEmail()
 
 		if !uu.Valid {
+			logger.Warn("registration input validation failed", "reasons", uu.Reasons, "email", uu.Email)
 			http.Error(w, strings.Join(uu.Reasons, "\n"), http.StatusBadRequest)
+			return
 		}
 
 		// Hash password
 		uu.hashPassword()
 		if !uu.Valid {
+			logger.Warn("failed to hash password", "email", uu.Email)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
 
 		// Insert user
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_, err = DBPool.Exec(ctx, `INSERT INTO users (email, username, password) VALUES ($1, $2, $3)`, uu.Email, uu.Username, uu.Password)
-		if err != nil {
-			log.Printf("%v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
 		defer cancel()
 
+		_, err = db.DBPool.Exec(ctx,
+			`INSERT INTO users (email, username, password) VALUES ($1, $2, $3)`,
+			uu.Email, uu.Username, uu.Password)
+		if err != nil {
+			logger.Error("error while inserting user", "error", err, "email", uu.Email, "username", uu.Username)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
 		w.WriteHeader(200)
+		fmt.Fprintln(w, "User registered successfully")
 	})
-}
-
-type malformedRequest struct {
-	status int
-	msg    string
-}
-
-func (mr *malformedRequest) Error() string {
-	return mr.msg
-}
-
-func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst interface{}) error {
-	ct := r.Header.Get("Content-Type")
-	if ct != "" {
-		mediaType := strings.ToLower(strings.TrimSpace(strings.Split(ct, ";")[0]))
-		if mediaType != "application/json" {
-			msg := "Content-Type header is not application/json"
-			return &malformedRequest{status: http.StatusUnsupportedMediaType, msg: msg}
-		}
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, 1048676)
-
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-
-	err := dec.Decode(&dst)
-	if err != nil {
-		var syntaxError *json.SyntaxError
-		var unmarshalTypeError *json.UnmarshalTypeError
-		var maxBytesError *http.MaxBytesError
-
-		switch {
-		case errors.As(err, &syntaxError):
-			msg := fmt.Sprintf("Request body contains badly formed JSON (at position %d)", syntaxError.Offset)
-			return &malformedRequest{status: http.StatusBadRequest, msg: msg}
-
-		case errors.Is(err, io.ErrUnexpectedEOF):
-			msg := "Request body contains badly formed JSON"
-			return &malformedRequest{status: http.StatusBadRequest, msg: msg}
-
-		case errors.As(err, &unmarshalTypeError):
-			msg := fmt.Sprintf("Request body contains an invalid value for the %q field (at position %d)", unmarshalTypeError.Field, unmarshalTypeError.Offset)
-			return &malformedRequest{status: http.StatusBadRequest, msg: msg}
-
-		case strings.HasPrefix(err.Error(), "json: unknown field"):
-			fieldName := strings.TrimPrefix(err.Error(), "json: unknown field ")
-			msg := fmt.Sprintf("Request body contains unknown field %s", fieldName)
-			return &malformedRequest{status: http.StatusBadRequest, msg: msg}
-
-		case errors.Is(err, io.EOF):
-			msg := "Request body must not be empty"
-			return &malformedRequest{status: http.StatusBadRequest, msg: msg}
-
-		case errors.As(err, &maxBytesError):
-			msg := fmt.Sprintf("Request body must not be larger than %d bytes", maxBytesError.Limit)
-			return &malformedRequest{status: http.StatusRequestEntityTooLarge, msg: msg}
-
-		default:
-			return err
-		}
-	}
-
-	err = dec.Decode(&struct{}{})
-	if !errors.Is(err, io.EOF) {
-		msg := "Request body must only contain a single JSON object"
-		return &malformedRequest{status: http.StatusBadRequest, msg: msg}
-	}
-
-	return nil
 }
