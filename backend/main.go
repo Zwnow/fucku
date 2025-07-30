@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,13 +18,8 @@ import (
 
 // We setup the database prior to running the app.
 func setupApp(db *internal.Database) error {
-	err := godotenv.Load()
-	if err != nil {
-		return err
-	}
-
 	// If it already exists, postgres will error accordingly, which we ignore.
-	err = internal.SetupDatabase(db)
+	err := internal.SetupDatabase(db)
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
 			return err
@@ -44,24 +40,34 @@ func main() {
 
 // The actual entry point used to setup the app, register routes and serve the webserver
 func run(ctx context.Context, w io.Writer) error {
+	logger := internal.NewLogger("app.log", slog.LevelInfo)
+	slog.SetDefault(logger)
+
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
+	err := godotenv.Load()
+	if err != nil {
+		return err
+	}
+
 	db, err := internal.NewDatabase(os.Getenv("DB_URL"))
 	if err != nil {
-		log.Fatalf("Database setup failed: %v", err)
+		logger.Error("failed to initialize DB", "error", err)
+		return err
 	}
 
 	err = setupApp(db)
 	if err != nil {
-		log.Fatalf("App setup failed: %v", err)
+		logger.Error("app setup failed", "error", err)
+		return err
 	}
 
 	mux := http.NewServeMux()
 
 	// User Routes
 	// mux.Handle("POST /register", testMiddleware(te()))
-	mux.Handle("POST /register", internal.RegisterUser(db))
+	mux.Handle("POST /register", internal.RegisterUser(db, logger))
 
 	server := &http.Server{
 		Addr:    ":3000",
@@ -71,22 +77,23 @@ func run(ctx context.Context, w io.Writer) error {
 	go func() {
 		log.Println("Server is running on http://localhost:3000")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+			logger.Error("server error", "error", err)
 		}
 	}()
 
 	<-ctx.Done()
-	log.Println("Shutdown signal received")
+	logger.Info("shutdown signal received")
 	// Close connection pool
 	if db.DBPool != nil {
 		db.DBPool.Close()
 	}
 
 	if err := server.Shutdown(context.Background()); err != nil {
-		log.Fatalf("Server shutdown failed: %v", err)
+		logger.Error("server shutdown error", "error", err)
+		return err
 	}
 
-	log.Println("Server exited properly")
+	logger.Info("server exited properly")
 
 	return nil
 }

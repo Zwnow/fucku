@@ -3,7 +3,7 @@ package internal_test
 import (
 	"bytes"
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,15 +13,21 @@ import (
 	"fucku/internal"
 )
 
-var db *internal.Database
+var (
+	db     *internal.Database
+	logger *slog.Logger
+)
 
 func TestMain(m *testing.M) {
 	os.Setenv("DB_URL", "postgresql://postgres:postgres@localhost:5432/fucku_dev")
 
+	logger = internal.NewLogger("tests.log", slog.LevelInfo)
+
 	var err error
 	db, err = internal.NewDatabase(os.Getenv("DB_URL"))
 	if err != nil {
-		log.Fatalf("Failed to set up database: %v", err)
+		logger.Error("failed to set up database", "error", err)
+		return
 	}
 
 	code := m.Run()
@@ -36,23 +42,22 @@ func TestRegisterUser(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	internal.RegisterUser(db).ServeHTTP(w, req)
+	internal.RegisterUser(db, logger).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	var u internal.User
 	row := db.DBPool.QueryRow(ctx,
 		`SELECT id, username, password, email, created_at, updated_at FROM users WHERE users.username = 'testuser'`)
-	defer cancel()
 
 	if err := row.Scan(&u.Id, &u.Username, &u.Password, &u.Email, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		t.Fatalf("Error while parsing user: %v", err)
 	}
-
-	t.Logf("%+v", u)
 
 	_, err := db.DBPool.Exec(ctx, `DELETE FROM users WHERE users.username = 'testuser'`)
 	if err != nil {
