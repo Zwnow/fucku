@@ -79,3 +79,16 @@ func TestRegisterUserPasswordTooShort(t *testing.T) {
 		t.Errorf("expected status 400, got %d", w.Code)
 	}
 }
+
+func TestRegisterUserIllegalCharacter(t *testing.T) {
+	body := `{"username":"testuser","email":"test@example.com", "password":"Secret1 "}`
+	req := httptest.NewRequest("POST", "http://localhost:3000/register", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	users.RegisterUser(db, logger).ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}

@@ -44,9 +44,18 @@ func (uu *UnregisteredUser) validateUsername() {
 		uu.Reasons = append(uu.Reasons, "invalid username length")
 	}
 
-	if !re.MatchString(uu.Password) {
+	if !re.MatchString(uu.Username) {
 		uu.Valid = false
-		uu.Reasons = append(uu.Reasons, "invalid characters in password")
+		uu.Reasons = append(uu.Reasons, "invalid characters in username")
+	}
+}
+
+func (uu *UnregisteredUser) validateWhitespace() {
+	hasWhitespace := regexp.MustCompile(`\s+`)
+
+	if hasWhitespace.MatchString(uu.Username) || hasWhitespace.MatchString(uu.Email) || hasWhitespace.MatchString(uu.Password) {
+		uu.Valid = false
+		uu.Reasons = append(uu.Reasons, "contains whitespace")
 	}
 }
 
@@ -118,6 +127,7 @@ func RegisterUser(db *database.Database, logger *slog.Logger) http.Handler {
 		}
 
 		// Validate fields
+		uu.validateWhitespace()
 		uu.validateUsername()
 		uu.validatePassword()
 		uu.validateEmail()
