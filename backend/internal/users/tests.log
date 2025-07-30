@@ -1,1 +1,0 @@
-time=2025-07-30T16:06:10.016+02:00 level=WARN msg="registration input validation failed" reasons="[invalid password length]" email=test@example.com
