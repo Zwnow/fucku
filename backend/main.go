@@ -11,8 +11,8 @@ import (
 	"os/signal"
 	"strings"
 
-	token "fucku/internal/tokens"
 	database "fucku/internal/database"
+	token "fucku/internal/tokens"
 	users "fucku/internal/users"
 	"fucku/pkg"
 
@@ -74,7 +74,7 @@ func run(ctx context.Context, w io.Writer) error {
 	// Creates a token service
 	tokenService := token.TokenService{
 		Logger: logger,
-		DB: db,
+		DB:     db,
 	}
 
 	/** ROUTES & SERVER  **/
@@ -82,7 +82,11 @@ func run(ctx context.Context, w io.Writer) error {
 
 	// User Routes
 	// mux.Handle("POST /register", testMiddleware(te()))
-	mux.Handle("POST /register", RecoveryMiddleware(users.RegisterUser(db, logger, tokenService), logger))
+	mux.Handle("POST /register", Chain(
+		users.RegisterUser(db, logger, tokenService),
+		logger,
+		SayHiMiddleware(logger),
+		RecoveryMiddleware(logger)))
 
 	server := &http.Server{
 		Addr:    ":3000",
@@ -99,6 +103,7 @@ func run(ctx context.Context, w io.Writer) error {
 
 	<-ctx.Done()
 	logger.Info("shutdown signal received")
+
 	// Close connection pool
 	if db.DBPool != nil {
 		db.DBPool.Close()
@@ -114,22 +119,38 @@ func run(ctx context.Context, w io.Writer) error {
 	return nil
 }
 
-func RecoveryMiddleware(next http.Handler, logger *slog.Logger) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if err := recover(); err != nil {
-				logger.Error("Server panic", "error", err)
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			}
-		}()
+type Middleware func(http.Handler) http.Handler
 
-		next.ServeHTTP(w, r)
+func Chain(h http.Handler, logger *slog.Logger, middlewares ...Middleware) http.Handler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i](h)
+	}
+	return h
+}
+
+// Middleware that prevents the server from panicing due to errors
+func RecoveryMiddleware(logger *slog.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if err := recover(); err != nil {
+					logger.Error("Server panic", "error", err)
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				}
+			}()
+
+			next.ServeHTTP(w, r)
+		})
 	}
 }
 
+func SayHiMiddleware(logger *slog.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logger.Info("Say hi!")
 
-func te() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%v", r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }
+

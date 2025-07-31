@@ -22,6 +22,16 @@ var (
 	ts token.TokenService
 )
 
+type Middleware func(http.Handler) http.Handler
+
+func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i](h)
+	}
+	return h
+}
+
+
 func TestMain(m *testing.M) {
 	os.Setenv("DB_URL", "postgresql://postgres:postgres@localhost:5432/fucku_dev")
 
