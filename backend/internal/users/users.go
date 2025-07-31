@@ -11,6 +11,7 @@ import (
 	"time"
 
 	database "fucku/internal/database"
+	token "fucku/internal/tokens"
 	utils "fucku/internal/utils"
 
 	"github.com/alexedwards/argon2id"
@@ -108,7 +109,7 @@ type User struct {
 	UpdatedAt time.Time
 }
 
-func RegisterUser(db *database.Database, logger *slog.Logger) http.Handler {
+func RegisterUser(db *database.Database, logger *slog.Logger, ts token.TokenService) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uu := NewUnregisteredUser()
 
@@ -150,14 +151,27 @@ func RegisterUser(db *database.Database, logger *slog.Logger) http.Handler {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		_, err = db.DBPool.Exec(ctx,
-			`INSERT INTO users (email, username, password) VALUES ($1, $2, $3)`,
+		var id string
+		row := db.DBPool.QueryRow(ctx,
+			`INSERT INTO users (email, username, password) VALUES ($1, $2, $3) RETURNING id`,
 			uu.Email, uu.Username, uu.Password)
-		if err != nil {
-			logger.Error("error while inserting user", "error", err, "email", uu.Email, "username", uu.Username)
+		if err = row.Scan(&id); err != nil {
+			logger.Error("error while inserting user", "error", err, "username", uu.Username)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
+
+		// Generate verification token
+		token, err := ts.NewVerificationToken(id)
+		if err != nil {
+			logger.Error("error while creating verification token", "error", err, "username", uu.Username)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		logger.Debug("created verification token", "token", token.Token, "user_id", id)
+
+		fmt.Printf("%+v", token)
 
 		w.WriteHeader(200)
 		fmt.Fprintln(w, "User registered successfully")

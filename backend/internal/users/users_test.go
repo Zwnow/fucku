@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	token "fucku/internal/tokens"
 	database "fucku/internal/database"
 	users "fucku/internal/users"
 	"fucku/pkg"
@@ -18,6 +19,7 @@ import (
 var (
 	db     *database.Database
 	logger *slog.Logger
+	ts token.TokenService
 )
 
 func TestMain(m *testing.M) {
@@ -32,6 +34,11 @@ func TestMain(m *testing.M) {
 		return
 	}
 
+	ts = token.TokenService{
+		DB: db,
+		Logger: logger,
+	}
+
 	code := m.Run()
 
 	db.DBPool.Close()
@@ -44,7 +51,7 @@ func TestRegisterUserSuccess(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	users.RegisterUser(db, logger).ServeHTTP(w, req)
+	users.RegisterUser(db, logger, ts).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
@@ -73,7 +80,7 @@ func TestRegisterUserPasswordTooShort(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	users.RegisterUser(db, logger).ServeHTTP(w, req)
+	users.RegisterUser(db, logger, ts).ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -86,7 +93,7 @@ func TestRegisterUserIllegalCharacter(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	users.RegisterUser(db, logger).ServeHTTP(w, req)
+	users.RegisterUser(db, logger, ts).ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)

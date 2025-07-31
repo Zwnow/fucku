@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,11 +25,21 @@ func NewDatabase(connString string) (*Database, error) {
 }
 
 func SetupDatabase(db *Database) error {
-	DB_NAME := os.Getenv("DB_NAME")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	conn, err := pgx.Connect(pgx.ConnConfig{
+		Host: "localhost",
+		Port: 5432,
+		Database: "postgres",
+		User: "postgres",
+		Password: "postgres",
+	})
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
 
-	_, err := db.DBPool.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s", DB_NAME))
+	DB_NAME := os.Getenv("DB_NAME")
+
+	_, err = conn.Exec(fmt.Sprintf("CREATE DATABASE %s", DB_NAME))
 	if err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
 			return err

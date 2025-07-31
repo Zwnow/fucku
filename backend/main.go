@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 
+	token "fucku/internal/tokens"
 	database "fucku/internal/database"
 	users "fucku/internal/users"
 	"fucku/pkg"
@@ -65,11 +66,16 @@ func run(ctx context.Context, w io.Writer) error {
 		return err
 	}
 
+	tokenService := token.TokenService{
+		Logger: logger,
+		DB: db,
+	}
+
 	mux := http.NewServeMux()
 
 	// User Routes
 	// mux.Handle("POST /register", testMiddleware(te()))
-	mux.Handle("POST /register", users.RegisterUser(db, logger))
+	mux.Handle("POST /register", users.RegisterUser(db, logger, tokenService))
 
 	server := &http.Server{
 		Addr:    ":3000",
