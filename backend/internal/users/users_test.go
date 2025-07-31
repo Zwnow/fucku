@@ -10,21 +10,23 @@ import (
 	"testing"
 	"time"
 
-	"fucku/internal"
+	database "fucku/internal/database"
+	users "fucku/internal/users"
+	"fucku/pkg"
 )
 
 var (
-	db     *internal.Database
+	db     *database.Database
 	logger *slog.Logger
 )
 
 func TestMain(m *testing.M) {
 	os.Setenv("DB_URL", "postgresql://postgres:postgres@localhost:5432/fucku_dev")
 
-	logger = internal.NewLogger("tests.log", slog.LevelInfo)
+	logger = pkg.NewLogger("tests.log", slog.LevelInfo)
 
 	var err error
-	db, err = internal.NewDatabase(os.Getenv("DB_URL"))
+	db, err = database.NewDatabase(os.Getenv("DB_URL"))
 	if err != nil {
 		logger.Error("failed to set up database", "error", err)
 		return
@@ -36,13 +38,13 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestRegisterUser(t *testing.T) {
+func TestRegisterUserSuccess(t *testing.T) {
 	body := `{"username":"testuser","email":"test@example.com", "password":"1Secret1"}`
 	req := httptest.NewRequest("POST", "http://localhost:3000/register", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	internal.RegisterUser(db, logger).ServeHTTP(w, req)
+	users.RegisterUser(db, logger).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
@@ -51,7 +53,7 @@ func TestRegisterUser(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	var u internal.User
+	var u users.User
 	row := db.DBPool.QueryRow(ctx,
 		`SELECT id, username, password, email, created_at, updated_at FROM users WHERE users.username = 'testuser'`)
 
@@ -62,5 +64,31 @@ func TestRegisterUser(t *testing.T) {
 	_, err := db.DBPool.Exec(ctx, `DELETE FROM users WHERE users.username = 'testuser'`)
 	if err != nil {
 		t.Fatalf("Error cleaning up: %v", err)
+	}
+}
+
+func TestRegisterUserPasswordTooShort(t *testing.T) {
+	body := `{"username":"testuser","email":"test@example.com", "password":"Secret1"}`
+	req := httptest.NewRequest("POST", "http://localhost:3000/register", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	users.RegisterUser(db, logger).ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+}
+
+func TestRegisterUserIllegalCharacter(t *testing.T) {
+	body := `{"username":"testuser","email":"test@example.com", "password":"Secret1 "}`
+	req := httptest.NewRequest("POST", "http://localhost:3000/register", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	users.RegisterUser(db, logger).ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
 	}
 }

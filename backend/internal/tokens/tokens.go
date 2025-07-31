@@ -6,6 +6,7 @@ import (
 
 type Token struct {
 	Id        string    `json:"id"`
+	UserId    string    `json:"user_id"`
 	TokenType string    `json:"token_type"`
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`

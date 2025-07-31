@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	database "fucku/internal/database"
+	utils "fucku/internal/utils"
+
 	"github.com/alexedwards/argon2id"
 )
 
@@ -41,9 +44,18 @@ func (uu *UnregisteredUser) validateUsername() {
 		uu.Reasons = append(uu.Reasons, "invalid username length")
 	}
 
-	if !re.MatchString(uu.Password) {
+	if !re.MatchString(uu.Username) {
 		uu.Valid = false
-		uu.Reasons = append(uu.Reasons, "invalid characters in password")
+		uu.Reasons = append(uu.Reasons, "invalid characters in username")
+	}
+}
+
+func (uu *UnregisteredUser) validateWhitespace() {
+	hasWhitespace := regexp.MustCompile(`\s+`)
+
+	if hasWhitespace.MatchString(uu.Username) || hasWhitespace.MatchString(uu.Email) || hasWhitespace.MatchString(uu.Password) {
+		uu.Valid = false
+		uu.Reasons = append(uu.Reasons, "contains whitespace")
 	}
 }
 
@@ -96,16 +108,16 @@ type User struct {
 	UpdatedAt time.Time
 }
 
-func RegisterUser(db *Database, logger *slog.Logger) http.Handler {
+func RegisterUser(db *database.Database, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uu := NewUnregisteredUser()
 
 		// Parse body
-		err := DecodeJSONBody(w, r, &uu)
+		err := utils.DecodeJSONBody(w, r, &uu)
 		if err != nil {
-			var mr *malformedRequest
+			var mr *utils.MalformedRequest
 			if errors.As(err, &mr) {
-				http.Error(w, mr.msg, mr.status)
+				http.Error(w, mr.Msg, mr.Status)
 				return
 			} else {
 				logger.Error("error while decoding json body in register user", "error", err)
@@ -115,6 +127,7 @@ func RegisterUser(db *Database, logger *slog.Logger) http.Handler {
 		}
 
 		// Validate fields
+		uu.validateWhitespace()
 		uu.validateUsername()
 		uu.validatePassword()
 		uu.validateEmail()
