@@ -43,45 +43,53 @@ func main() {
 
 // The actual entry point used to setup the app, register routes and serve the webserver
 func run(ctx context.Context, w io.Writer) error {
+	// Create slog logger and set it as default
+	// First argument is the name of the log file
 	logger := pkg.NewLogger("app.log", slog.LevelInfo)
 	slog.SetDefault(logger)
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
+	// Load environment
 	err := godotenv.Load()
 	if err != nil {
 		return err
 	}
 
+	// Create a database with a connection pool
 	db, err := database.NewDatabase(os.Getenv("DB_URL"))
 	if err != nil {
 		logger.Error("failed to initialize DB", "error", err)
 		return err
 	}
 
+	// Sets up the database & tables
 	err = setupApp(db)
 	if err != nil {
 		logger.Error("app setup failed", "error", err)
 		return err
 	}
 
+	// Creates a token service
 	tokenService := token.TokenService{
 		Logger: logger,
 		DB: db,
 	}
 
+	/** ROUTES & SERVER  **/
 	mux := http.NewServeMux()
 
 	// User Routes
 	// mux.Handle("POST /register", testMiddleware(te()))
-	mux.Handle("POST /register", users.RegisterUser(db, logger, tokenService))
+	mux.Handle("POST /register", RecoveryMiddleware(users.RegisterUser(db, logger, tokenService), logger))
 
 	server := &http.Server{
 		Addr:    ":3000",
 		Handler: mux,
 	}
 
+	// Run in a go routine to cleanly shutdown in case of failure
 	go func() {
 		log.Println("Server is running on http://localhost:3000")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -106,13 +114,19 @@ func run(ctx context.Context, w io.Writer) error {
 	return nil
 }
 
-func testMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%v", r)
+func RecoveryMiddleware(next http.Handler, logger *slog.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				logger.Error("Server panic", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			}
+		}()
 
 		next.ServeHTTP(w, r)
-	})
+	}
 }
+
 
 func te() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

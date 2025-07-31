@@ -171,9 +171,15 @@ func RegisterUser(db *database.Database, logger *slog.Logger, ts token.TokenServ
 
 		logger.Debug("created verification token", "token", token.Token, "user_id", id)
 
-		fmt.Printf("%+v", token)
-
 		w.WriteHeader(200)
 		fmt.Fprintln(w, "User registered successfully")
+	})
+}
+
+func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. validate password
+		// 2. create session
+		// 3. return jwt with user id & session token?
 	})
 }
