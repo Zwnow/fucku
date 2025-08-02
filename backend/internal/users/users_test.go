@@ -131,6 +131,5 @@ func TestLoginUserSuccess(t *testing.T) {
 		t.Log("Failed to cleanup logintest@example.com user")
 	}
 
-	respBody := w.Body.String()
-	t.Logf("Login response body: %s", respBody)
+	t.Logf("%+v", w.Result().Header)
 }

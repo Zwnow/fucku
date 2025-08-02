@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	database "fucku/internal/database"
 	token "fucku/internal/tokens"
@@ -141,6 +142,44 @@ func RecoveryMiddleware(logger *slog.Logger) Middleware {
 					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				}
 			}()
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func CSRFMiddleware(db database.Database, logger *slog.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			csrfToken, err := r.Cookie("csrf_token")
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+
+			csrfHeader := r.Header.Get("X-CSRF-Token")
+			if csrfHeader == "" || csrfHeader != csrfToken.Value {
+				http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+				return
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			var expiry time.Time
+			row := db.DBPool.QueryRow(ctx,
+				`SELECT expires_at FROM tokens WHERE token = $1`, csrfToken.Value)
+
+			if err = row.Scan(&expiry); err != nil {
+				logger.Error("failed to parse expiry from db csrf token", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+
+			if expiry.Before(time.Now().UTC()) {
+				http.Error(w, "CSRF token expired", http.StatusInternalServerError)
+				return
+			}
 
 			next.ServeHTTP(w, r)
 		})
