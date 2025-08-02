@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -101,12 +102,17 @@ func (uu *UnregisteredUser) hashPassword() {
 }
 
 type User struct {
-	Id        string
-	Email     string
-	Username  string
-	Password  string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Id        string    `json:"id"`
+	Email     string    `json:"email"`
+	Username  string    `json:"username"`
+	Verified  int       `json:"verified"`
+	Password  string    `json:"password,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (u *User) clearPassword() {
+	u.Password = ""
 }
 
 func RegisterUser(db *database.Database, logger *slog.Logger, ts token.TokenService) http.Handler {
@@ -179,7 +185,91 @@ func RegisterUser(db *database.Database, logger *slog.Logger, ts token.TokenServ
 func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. validate password
-		// 2. create session
-		// 3. return jwt with user id & session token?
+		uu := NewUnregisteredUser()
+
+		err := utils.DecodeJSONBody(w, r, &uu)
+		if err != nil {
+			var mr *utils.MalformedRequest
+			if errors.As(err, &mr) {
+				http.Error(w, mr.Msg, mr.Status)
+				return
+			} else {
+				logger.Error("error while decoding json body in login user", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		// Re-validate just to be sure
+		uu.validateEmail()
+		uu.validatePassword()
+
+		if !uu.Valid {
+			logger.Error("invalid credentials provided", "email", uu.Email)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		var u User
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		row := db.DBPool.QueryRow(ctx, `
+            SELECT id, email, username, verified, password, created_at, updated_at
+            FROM users WHERE email = $1 LIMIT 1;
+            `, uu.Email)
+		if err := row.Scan(
+			&u.Id,
+			&u.Email,
+			&u.Username,
+			&u.Verified,
+			&u.Password,
+			&u.CreatedAt,
+			&u.UpdatedAt,
+		); err != nil {
+			logger.Error("error while parsing user from db during login", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		match, err := argon2id.ComparePasswordAndHash(uu.Password, u.Password)
+		if !match || err != nil {
+			// Invalid password
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		// 2. revoke & create session
+		token, err := ts.NewSessionToken(u.Id)
+		if err != nil {
+			logger.Error("failed to create session token", "error", err, "email", u.Email)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		resData := make(map[string]any)
+
+		// Clear sensitive data
+		u.clearPassword()
+
+		resData["user"] = u
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session_token",
+			Value:    token.Token,
+			Path:     "/",
+			HttpOnly: true,
+			// Enable in production
+			// Secure: true,
+			SameSite: http.SameSiteStrictMode,
+			Expires:  token.ExpiresAt,
+		})
+
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(resData)
+		if err != nil {
+			http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
+			logger.Error("failed to encode json", "error", err)
+			return
+		}
 	})
 }

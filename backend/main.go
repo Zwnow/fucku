@@ -77,6 +77,10 @@ func run(ctx context.Context, w io.Writer) error {
 		DB:     db,
 	}
 
+	/** WORKERS **/
+	go token.StartTokenCleanup(db, logger)
+	logger.Info("started token cleanup service")
+
 	/** ROUTES & SERVER  **/
 	mux := http.NewServeMux()
 
@@ -85,7 +89,6 @@ func run(ctx context.Context, w io.Writer) error {
 	mux.Handle("POST /register", Chain(
 		users.RegisterUser(db, logger, tokenService),
 		logger,
-		SayHiMiddleware(logger),
 		RecoveryMiddleware(logger)))
 
 	server := &http.Server{
@@ -143,14 +146,3 @@ func RecoveryMiddleware(logger *slog.Logger) Middleware {
 		})
 	}
 }
-
-func SayHiMiddleware(logger *slog.Logger) Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.Info("Say hi!")
-
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-

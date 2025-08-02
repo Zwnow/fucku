@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	token "fucku/internal/tokens"
 	database "fucku/internal/database"
+	token "fucku/internal/tokens"
 	users "fucku/internal/users"
 	"fucku/pkg"
 )
@@ -19,18 +19,8 @@ import (
 var (
 	db     *database.Database
 	logger *slog.Logger
-	ts token.TokenService
+	ts     token.TokenService
 )
-
-type Middleware func(http.Handler) http.Handler
-
-func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		h = middlewares[i](h)
-	}
-	return h
-}
-
 
 func TestMain(m *testing.M) {
 	os.Setenv("DB_URL", "postgresql://postgres:postgres@localhost:5432/fucku_dev")
@@ -45,7 +35,7 @@ func TestMain(m *testing.M) {
 	}
 
 	ts = token.TokenService{
-		DB: db,
+		DB:     db,
 		Logger: logger,
 	}
 
@@ -108,4 +98,39 @@ func TestRegisterUserIllegalCharacter(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
 	}
+}
+
+func TestLoginUserSuccess(t *testing.T) {
+	// Register user
+	body := `{"username":"logintest","email":"logintest@example.com", "password":"1Secret1"}`
+	registerReq := httptest.NewRequest("POST", "http://localhost:3000/login", bytes.NewBufferString(body))
+	registerReq.Header.Set("Content-Type", "application/json")
+	registerWriter := httptest.NewRecorder()
+	users.RegisterUser(db, logger, ts).ServeHTTP(registerWriter, registerReq)
+
+	if registerWriter.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", registerWriter.Code)
+	}
+
+	// Login
+	req := httptest.NewRequest("POST", "http://localhost:3000/login", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	users.LoginUser(db, logger, ts).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	_, err := db.DBPool.Exec(ctx, `DELETE FROM users WHERE email = 'logintest@example.com'`)
+	if err != nil {
+		t.Log("Failed to cleanup logintest@example.com user")
+	}
+
+	respBody := w.Body.String()
+	t.Logf("Login response body: %s", respBody)
 }
