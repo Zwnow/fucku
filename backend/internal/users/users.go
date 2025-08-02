@@ -246,6 +246,13 @@ func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService
 			return
 		}
 
+		csrfToken, err := ts.NewSessionToken(u.Id)
+		if err != nil {
+			logger.Error("failed to create csrf token", "error", err, "email", u.Email)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
 		resData := make(map[string]any)
 
 		// Clear sensitive data
@@ -262,6 +269,17 @@ func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService
 			// Secure: true,
 			SameSite: http.SameSiteStrictMode,
 			Expires:  token.ExpiresAt,
+		})
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "csrf_token",
+			Value:    csrfToken.Token,
+			Path:     "/",
+			HttpOnly: false,
+			// Enable in production
+			// Secure: true,
+			SameSite: http.SameSiteStrictMode,
+			Expires:  time.Now().Add(2 * time.Hour),
 		})
 
 		w.Header().Set("Content-Type", "application/json")
