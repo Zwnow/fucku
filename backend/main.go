@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	config "fucku/internal/config"
 	database "fucku/internal/database"
+	mailer "fucku/internal/mailer"
 	token "fucku/internal/tokens"
 	users "fucku/internal/users"
 	"fucku/pkg"
@@ -73,14 +75,16 @@ func run(ctx context.Context, w io.Writer) error {
 	}
 
 	// Creates a token service
-	tokenService := token.TokenService{
-		Logger: logger,
-		DB:     db,
-	}
+	tokenService := token.NewTokenService(logger, db)
+	appConfig := config.NewAppConfig(logger, db)
+
+	mailer := mailer.NewMailer(logger, appConfig)
 
 	/** WORKERS **/
 	go token.StartTokenCleanup(db, logger)
 	logger.Info("started token cleanup service")
+	go appConfig.StartConfigWorker()
+	logger.Info("started config service")
 
 	/** ROUTES & SERVER  **/
 	mux := http.NewServeMux()
@@ -88,9 +92,24 @@ func run(ctx context.Context, w io.Writer) error {
 	// User Routes
 	// mux.Handle("POST /register", testMiddleware(te()))
 	mux.Handle("POST /register", Chain(
-		users.RegisterUser(db, logger, tokenService),
-		logger,
-		RecoveryMiddleware(logger)))
+		users.RegisterUser(db, logger, tokenService, mailer),
+		RecoveryMiddleware(logger),
+		CORSMiddleware(),
+	))
+
+	mux.Handle("POST /login", Chain(
+		users.LoginUser(db, logger, tokenService),
+		RecoveryMiddleware(logger),
+		CORSMiddleware(),
+	))
+
+	mux.Handle("POST /logout", Chain(
+		users.LogoutUser(db, logger, tokenService),
+		RecoveryMiddleware(logger),
+		CORSMiddleware(),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
 
 	server := &http.Server{
 		Addr:    ":3000",
@@ -125,7 +144,7 @@ func run(ctx context.Context, w io.Writer) error {
 
 type Middleware func(http.Handler) http.Handler
 
-func Chain(h http.Handler, logger *slog.Logger, middlewares ...Middleware) http.Handler {
+func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		h = middlewares[i](h)
 	}
@@ -148,7 +167,7 @@ func RecoveryMiddleware(logger *slog.Logger) Middleware {
 	}
 }
 
-func CSRFMiddleware(db database.Database, logger *slog.Logger) Middleware {
+func CSRFMiddleware(db *database.Database, logger *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			csrfToken, err := r.Cookie("csrf_token")
@@ -178,6 +197,56 @@ func CSRFMiddleware(db database.Database, logger *slog.Logger) Middleware {
 
 			if expiry.Before(time.Now().UTC()) {
 				http.Error(w, "CSRF token expired", http.StatusInternalServerError)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func IsAuthenticatedMiddleware(db *database.Database, logger *slog.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cookie, err := r.Cookie("session_token")
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			row := db.DBPool.QueryRow(ctx, `SELECT user_id FROM tokens WHERE token = $1`, cookie.Value)
+
+			var userId string
+			if err := row.Scan(&userId); err != nil {
+				log.Println(err)
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+
+			var u users.User
+			row = db.DBPool.QueryRow(ctx, `SELECT id, username, email, verified, created_at, updated_at FROM users WHERE id = $1`, userId)
+			if err = row.Scan(&u.Id, &u.Username, &u.Email, &u.Verified, &u.CreatedAt, &u.UpdatedAt); err != nil {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				logger.Error("failed to parse userdata into struct", "error", err)
+				return
+			}
+
+			const userKey = users.UserContextKey("user")
+			ctx = context.WithValue(r.Context(), userKey, u)
+
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func CORSMiddleware() Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(200)
 				return
 			}
 

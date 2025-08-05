@@ -12,6 +12,7 @@ import (
 	"time"
 
 	database "fucku/internal/database"
+	mailer "fucku/internal/mailer"
 	token "fucku/internal/tokens"
 	utils "fucku/internal/utils"
 
@@ -115,7 +116,16 @@ func (u *User) clearPassword() {
 	u.Password = ""
 }
 
-func RegisterUser(db *database.Database, logger *slog.Logger, ts token.TokenService) http.Handler {
+type UserContextKey string
+
+// Gets a user from a requests context set by middleware.
+// Password field will always be empty!
+func GetUserFromContext(ctx context.Context) (User, bool) {
+	u, ok := ctx.Value(UserContextKey("user")).(User)
+	return u, ok
+}
+
+func RegisterUser(db *database.Database, logger *slog.Logger, ts *token.TokenService, mailer *mailer.Mailer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uu := NewUnregisteredUser()
 
@@ -177,12 +187,14 @@ func RegisterUser(db *database.Database, logger *slog.Logger, ts token.TokenServ
 
 		logger.Debug("created verification token", "token", token.Token, "user_id", id)
 
+		go mailer.SendRegistrationMail(uu.Username, uu.Email, token.Token)
+
 		w.WriteHeader(200)
 		fmt.Fprintln(w, "User registered successfully")
 	})
 }
 
-func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService) http.Handler {
+func LoginUser(db *database.Database, logger *slog.Logger, ts *token.TokenService) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. validate password
 		uu := NewUnregisteredUser()
@@ -246,7 +258,7 @@ func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService
 			return
 		}
 
-		csrfToken, err := ts.NewSessionToken(u.Id)
+		csrfToken, err := ts.NewCSRFToken(u.Id)
 		if err != nil {
 			logger.Error("failed to create csrf token", "error", err, "email", u.Email)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -279,7 +291,7 @@ func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService
 			// Enable in production
 			// Secure: true,
 			SameSite: http.SameSiteStrictMode,
-			Expires:  time.Now().Add(2 * time.Hour),
+			Expires:  csrfToken.ExpiresAt,
 		})
 
 		w.Header().Set("Content-Type", "application/json")
@@ -289,5 +301,32 @@ func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService
 			logger.Error("failed to encode json", "error", err)
 			return
 		}
+
+		logger.Info("logged in", "email", u.Email)
+	})
+}
+
+// Clears a users session & csrf tokens.
+func LogoutUser(db *database.Database, logger *slog.Logger, ts *token.TokenService) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := GetUserFromContext(r.Context())
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			logger.Error("failed to log out user (failed to read user from context)", "request", r)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
+		defer cancel()
+
+		_, err := db.DBPool.Exec(ctx, `DELETE FROM tokens WHERE user_id = $1 AND token_type = 'csrf' OR token_type = 'session'`, user.Id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			logger.Error("failed to log out user", "error", err)
+			return
+		}
+
+		w.WriteHeader(200)
+		fmt.Fprintln(w, "user logged out successfully")
 	})
 }
