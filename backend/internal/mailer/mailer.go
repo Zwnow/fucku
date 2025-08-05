@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -32,17 +33,19 @@ func NewMailer(logger *slog.Logger, ac *config.AppConfig) *Mailer {
 	}
 }
 
-func (m *Mailer) SendRegistrationMail(email, username string) {
+func (m *Mailer) SendRegistrationMail(username, email, token string) {
 	if !m.AppConfig.MailingActive {
 		return
 	}
+
+	appName := os.Getenv("APP_NAME")
 
 	body := map[string]any{
 		"Messages": []map[string]any{
 			{
 				"From": map[string]any{
 					"Email": "svenotimm@gmail.com",
-					"Name":  "Mailjet Test",
+					"Name":  fmt.Sprintf("%s - Email Verification", appName),
 				},
 				"To": []map[string]any{
 					{
@@ -50,9 +53,9 @@ func (m *Mailer) SendRegistrationMail(email, username string) {
 						"Name":  username,
 					},
 				},
-				"Subject":  "Some mail test",
-				"HTMLPart": "<h3>Dear passenger 1, welcome to <a href=\"https://www.mailjet.com/\">Mailjet</a>!</h3><br />May the delivery force be with you!",
-				"TextPart": "Dear passenger 1, welcome to Mailjet! May the delivery force be with you!",
+				"Subject":  "Your Email-Verification Code",
+				"HTMLPart": fmt.Sprintf("<h3>Hey %s, welcome to %s!</h3><br />Your verification code is: %s!", username, appName, token),
+				"TextPart": fmt.Sprintf("Hey %s, welcome to %s! Your verification code is: %s!", username, appName, token),
 			},
 		},
 	}

@@ -5,7 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"log"
+	"encoding/hex"
 	"log/slog"
 	"math/big"
 	"os"
@@ -107,8 +107,6 @@ func (ts *TokenService) NewSessionToken(userId string) (*Token, error) {
 		return nil, err
 	}
 
-	log.Printf("Created session token: %+v", token)
-
 	return &token, nil
 }
 
@@ -122,14 +120,21 @@ func (ts *TokenService) NewCSRFToken(userId string) (*Token, error) {
 		return nil, err
 	}
 
+	rawToken := make([]byte, 32)
+	if _, err := rand.Read(rawToken); err != nil {
+		return nil, err 
+	}
+
 	t := hmac.New(sha256.New, []byte(os.Getenv("CSRF_SECRET")))
+	t.Write(rawToken)
+	signedToken := hex.EncodeToString(t.Sum(nil))
 
 	row := ts.DB.DBPool.QueryRow(ctx, `
 		INSERT INTO tokens (user_id, token_type, token, expires_at)
 		VALUES ($1, $2, $3, $4) RETURNING id, user_id, token_type, token, expires_at, created_at, updated_at`,
 		userId,
 		"csrf",
-		t,
+		signedToken,
 		time.Now().Add(time.Hour*24))
 
 	var token Token
