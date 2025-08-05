@@ -97,7 +97,7 @@ func SetupTables(db *Database) error {
 			sql: `
                 CREATE TABLE IF NOT EXISTS config (
                     id INTEGER PRIMARY KEY DEFAULT 1,
-                    mailing_active BOOLEAN NOT NULL DEFAULT true,
+                    mailing_active BOOLEAN NOT NULL DEFAULT false,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );`,

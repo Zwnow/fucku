@@ -100,6 +100,13 @@ func run(ctx context.Context, w io.Writer) error {
 		RecoveryMiddleware(logger),
 	))
 
+	mux.Handle("POST /logout", Chain(
+		users.LogoutUser(db, logger, tokenService),
+		IsAuthenticatedMiddleware(db, logger),
+		CSRFMiddleware(db, logger),
+		RecoveryMiddleware(logger),
+	))
+
 	server := &http.Server{
 		Addr:    ":3000",
 		Handler: mux,
@@ -156,7 +163,7 @@ func RecoveryMiddleware(logger *slog.Logger) Middleware {
 	}
 }
 
-func CSRFMiddleware(db database.Database, logger *slog.Logger) Middleware {
+func CSRFMiddleware(db *database.Database, logger *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			csrfToken, err := r.Cookie("csrf_token")
@@ -190,6 +197,42 @@ func CSRFMiddleware(db database.Database, logger *slog.Logger) Middleware {
 			}
 
 			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func IsAuthenticatedMiddleware(db *database.Database, logger *slog.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cookie, err := r.Cookie("session_token")
+			if err != nil {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			row := db.DBPool.QueryRow(ctx, `SELECT user_id FROM tokens WHERE token_type = 'session' AND token = $1 AND expires_at > $2`, cookie.Value, time.Now())
+
+			var userId string
+			if err := row.Scan(&userId); err != nil {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+
+			var u users.User
+			row = db.DBPool.QueryRow(ctx, `SELECT id, username, email, verified, created_at, updated_at FROM users WHERE id = $1`, userId)
+			if err = row.Scan(&u.Id, &u.Username, &u.Email, &u.Verified, &u.CreatedAt, &u.UpdatedAt); err != nil {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				logger.Error("failed to parse userdata into struct", "error", err)
+				return
+			}
+
+			const userKey = users.UserContextKey("user")
+			ctx = context.WithValue(r.Context(), userKey, u)
+
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

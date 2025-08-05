@@ -116,6 +116,13 @@ func (u *User) clearPassword() {
 	u.Password = ""
 }
 
+type UserContextKey string
+
+func GetUserFromContext(ctx context.Context) (User, bool) {
+	u, ok := ctx.Value(UserContextKey("user")).(User)
+	return u, ok
+}
+
 func RegisterUser(db *database.Database, logger *slog.Logger, ts *token.TokenService, mailer *mailer.Mailer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uu := NewUnregisteredUser()
@@ -294,5 +301,10 @@ func LoginUser(db *database.Database, logger *slog.Logger, ts *token.TokenServic
 		}
 
 		logger.Info("logged in", "email", u.Email)
+	})
+}
+
+func LogoutUser(db *database.Database, logger *slog.Logger, ts *token.TokenService) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	})
 }
