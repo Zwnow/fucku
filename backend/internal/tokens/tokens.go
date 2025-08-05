@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"log"
 	"log/slog"
 	"math/big"
 	"os"
@@ -105,6 +106,8 @@ func (ts *TokenService) NewSessionToken(userId string) (*Token, error) {
 	); err != nil {
 		return nil, err
 	}
+
+	log.Printf("Created session token: %+v", token)
 
 	return &token, nil
 }

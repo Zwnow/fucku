@@ -93,18 +93,22 @@ func run(ctx context.Context, w io.Writer) error {
 	// mux.Handle("POST /register", testMiddleware(te()))
 	mux.Handle("POST /register", Chain(
 		users.RegisterUser(db, logger, tokenService, mailer),
-		RecoveryMiddleware(logger)))
+		RecoveryMiddleware(logger),
+		CORSMiddleware(),
+	))
 
 	mux.Handle("POST /login", Chain(
 		users.LoginUser(db, logger, tokenService),
 		RecoveryMiddleware(logger),
+		CORSMiddleware(),
 	))
 
 	mux.Handle("POST /logout", Chain(
 		users.LogoutUser(db, logger, tokenService),
-		IsAuthenticatedMiddleware(db, logger),
-		CSRFMiddleware(db, logger),
 		RecoveryMiddleware(logger),
+		CORSMiddleware(),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
 	))
 
 	server := &http.Server{
@@ -213,10 +217,11 @@ func IsAuthenticatedMiddleware(db *database.Database, logger *slog.Logger) Middl
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 
-			row := db.DBPool.QueryRow(ctx, `SELECT user_id FROM tokens WHERE token_type = 'session' AND token = $1 AND expires_at > $2`, cookie.Value, time.Now())
+			row := db.DBPool.QueryRow(ctx, `SELECT user_id FROM tokens WHERE token = $1`, cookie.Value)
 
 			var userId string
 			if err := row.Scan(&userId); err != nil {
+				log.Println(err)
 				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 				return
 			}
@@ -233,6 +238,19 @@ func IsAuthenticatedMiddleware(db *database.Database, logger *slog.Logger) Middl
 			ctx = context.WithValue(r.Context(), userKey, u)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func CORSMiddleware() Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(200)
+				return
+			}
+
+			next.ServeHTTP(w, r)
 		})
 	}
 }
