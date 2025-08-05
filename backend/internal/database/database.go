@@ -26,10 +26,10 @@ func NewDatabase(connString string) (*Database, error) {
 
 func SetupDatabase(db *Database) error {
 	conn, err := pgx.Connect(pgx.ConnConfig{
-		Host: "localhost",
-		Port: 5432,
+		Host:     "localhost",
+		Port:     5432,
 		Database: "postgres",
-		User: "postgres",
+		User:     "postgres",
 		Password: "postgres",
 	})
 	if err != nil {
@@ -88,6 +88,16 @@ func SetupTables(db *Database) error {
                     token_type TEXT NOT NULL,
                     token TEXT UNIQUE NOT NULL,
                     expires_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );`,
+		},
+		{
+			name: "config table",
+			sql: `
+                CREATE TABLE IF NOT EXISTS config (
+                    id INTEGER PRIMARY KEY DEFAULT 1,
+                    mailing_active BOOLEAN NOT NULL DEFAULT true,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );`,

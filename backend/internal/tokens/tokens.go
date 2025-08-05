@@ -30,6 +30,13 @@ type Token struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+func NewTokenService(logger *slog.Logger, db *database.Database) *TokenService {
+	return &TokenService{
+		DB:     db,
+		Logger: logger,
+	}
+}
+
 func (ts *TokenService) NewVerificationToken(userId string) (*Token, error) {
 	uniqueToken, err := ts.newUniqueToken(8)
 	if err != nil {

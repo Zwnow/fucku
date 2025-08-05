@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	config "fucku/internal/config"
 	database "fucku/internal/database"
+	mailer "fucku/internal/mailer"
 	token "fucku/internal/tokens"
 	users "fucku/internal/users"
 	"fucku/pkg"
@@ -73,14 +75,16 @@ func run(ctx context.Context, w io.Writer) error {
 	}
 
 	// Creates a token service
-	tokenService := token.TokenService{
-		Logger: logger,
-		DB:     db,
-	}
+	tokenService := token.NewTokenService(logger, db)
+	appConfig := config.NewAppConfig(logger, db)
+
+	mailer := mailer.NewMailer(logger, appConfig)
 
 	/** WORKERS **/
 	go token.StartTokenCleanup(db, logger)
 	logger.Info("started token cleanup service")
+	go appConfig.StartConfigWorker()
+	logger.Info("started config service")
 
 	/** ROUTES & SERVER  **/
 	mux := http.NewServeMux()
@@ -88,9 +92,13 @@ func run(ctx context.Context, w io.Writer) error {
 	// User Routes
 	// mux.Handle("POST /register", testMiddleware(te()))
 	mux.Handle("POST /register", Chain(
-		users.RegisterUser(db, logger, tokenService),
-		logger,
+		users.RegisterUser(db, logger, tokenService, mailer),
 		RecoveryMiddleware(logger)))
+
+	mux.Handle("POST /login", Chain(
+		users.LoginUser(db, logger, tokenService),
+		RecoveryMiddleware(logger),
+	))
 
 	server := &http.Server{
 		Addr:    ":3000",
@@ -125,7 +133,7 @@ func run(ctx context.Context, w io.Writer) error {
 
 type Middleware func(http.Handler) http.Handler
 
-func Chain(h http.Handler, logger *slog.Logger, middlewares ...Middleware) http.Handler {
+func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		h = middlewares[i](h)
 	}

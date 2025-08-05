@@ -12,6 +12,7 @@ import (
 	"time"
 
 	database "fucku/internal/database"
+	mailer "fucku/internal/mailer"
 	token "fucku/internal/tokens"
 	utils "fucku/internal/utils"
 
@@ -115,7 +116,7 @@ func (u *User) clearPassword() {
 	u.Password = ""
 }
 
-func RegisterUser(db *database.Database, logger *slog.Logger, ts token.TokenService) http.Handler {
+func RegisterUser(db *database.Database, logger *slog.Logger, ts *token.TokenService, mailer *mailer.Mailer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uu := NewUnregisteredUser()
 
@@ -177,12 +178,14 @@ func RegisterUser(db *database.Database, logger *slog.Logger, ts token.TokenServ
 
 		logger.Debug("created verification token", "token", token.Token, "user_id", id)
 
+		go mailer.SendRegistrationMail(uu.Email, uu.Username)
+
 		w.WriteHeader(200)
 		fmt.Fprintln(w, "User registered successfully")
 	})
 }
 
-func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService) http.Handler {
+func LoginUser(db *database.Database, logger *slog.Logger, ts *token.TokenService) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. validate password
 		uu := NewUnregisteredUser()
@@ -279,7 +282,7 @@ func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService
 			// Enable in production
 			// Secure: true,
 			SameSite: http.SameSiteStrictMode,
-			Expires:  time.Now().Add(2 * time.Hour),
+			Expires:  csrfToken.ExpiresAt,
 		})
 
 		w.Header().Set("Content-Type", "application/json")
@@ -289,5 +292,7 @@ func LoginUser(db *database.Database, logger *slog.Logger, ts token.TokenService
 			logger.Error("failed to encode json", "error", err)
 			return
 		}
+
+		logger.Info("logged in", "email", u.Email)
 	})
 }

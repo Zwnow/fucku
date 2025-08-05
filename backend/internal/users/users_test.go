@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	config "fucku/internal/config"
 	database "fucku/internal/database"
+	mail "fucku/internal/mailer"
 	token "fucku/internal/tokens"
 	users "fucku/internal/users"
 	"fucku/pkg"
@@ -19,7 +21,9 @@ import (
 var (
 	db     *database.Database
 	logger *slog.Logger
-	ts     token.TokenService
+	ts     *token.TokenService
+	mailer *mail.Mailer
+	conf   *config.AppConfig
 )
 
 func TestMain(m *testing.M) {
@@ -34,10 +38,9 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	ts = token.TokenService{
-		DB:     db,
-		Logger: logger,
-	}
+	ts = token.NewTokenService(logger, db)
+	conf = config.NewAppConfig(logger, db)
+	mailer = mail.NewMailer(logger, conf)
 
 	code := m.Run()
 
@@ -51,7 +54,7 @@ func TestRegisterUserSuccess(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	users.RegisterUser(db, logger, ts).ServeHTTP(w, req)
+	users.RegisterUser(db, logger, ts, mailer).ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
@@ -80,7 +83,7 @@ func TestRegisterUserPasswordTooShort(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	users.RegisterUser(db, logger, ts).ServeHTTP(w, req)
+	users.RegisterUser(db, logger, ts, mailer).ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -93,7 +96,7 @@ func TestRegisterUserIllegalCharacter(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	users.RegisterUser(db, logger, ts).ServeHTTP(w, req)
+	users.RegisterUser(db, logger, ts, mailer).ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", w.Code)
@@ -106,7 +109,7 @@ func TestLoginUserSuccess(t *testing.T) {
 	registerReq := httptest.NewRequest("POST", "http://localhost:3000/login", bytes.NewBufferString(body))
 	registerReq.Header.Set("Content-Type", "application/json")
 	registerWriter := httptest.NewRecorder()
-	users.RegisterUser(db, logger, ts).ServeHTTP(registerWriter, registerReq)
+	users.RegisterUser(db, logger, ts, mailer).ServeHTTP(registerWriter, registerReq)
 
 	if registerWriter.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", registerWriter.Code)
