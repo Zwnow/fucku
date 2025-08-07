@@ -13,16 +13,15 @@ const password = ref<string>("");
 
 const handleLogin = async () => {
     processing.value = true;
-    try {
-        await userStore.loginUser(email.value, password.value);
-    } catch(error) {
+    const success = await userStore.loginUser(email.value, password.value);
+    if (!success) {
         hasError.value = true;
         errorText.value = "Something went wrong. Please check your credentials!";
-    } finally {
+    } else {
         email.value = "";
         password.value = "";
-        processing.value = false;
     }
+    processing.value = false;
 }
 </script>
 
@@ -37,14 +36,18 @@ const handleLogin = async () => {
                 Email
             </label>
             <input
-            class="border p-2 rounded-md"
-            type="email" id="email" v-model="email" />
+                class="border p-2 rounded-md"
+                required
+                type="email" id="email" v-model="email" />
         </fieldset>
         <fieldset class="flex flex-col gap-2">
             <label>Password</label>
             <input
-            class="border p-2 rounded-md"
-            type="password" id="password" v-model="password" />
+                class="border p-2 rounded-md"
+                minlength="8"
+                maxlength="72"
+                required
+                type="password" id="password" v-model="password" />
         </fieldset>
         <button type="submit">Login</button>
     </form>

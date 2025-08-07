@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomePage from '@/pages/home.vue';
 import LoginPage from '@/pages/login.vue';
+import RegisterPage from '@/pages/register.vue';
+import ProfilePage from '@/pages/profile.vue';
 import { isAuthenticated } from '@/utils/utils';
 
 const router = createRouter({
@@ -23,9 +25,17 @@ const router = createRouter({
       }
     },
     {
+      path: "/register",
+      name: "Register",
+      component: RegisterPage,
+      meta: {
+        requiresAuth: false,
+      }
+    },
+    {
       path: "/profile",
       name: "Profile",
-      component: HomePage,
+      component: ProfilePage,
       meta: {
         requiresAuth: true,
       }

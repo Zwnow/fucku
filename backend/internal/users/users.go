@@ -17,6 +17,7 @@ import (
 	utils "fucku/internal/utils"
 
 	"github.com/alexedwards/argon2id"
+	"github.com/jackc/pgx/v5"
 )
 
 type UnregisteredUser struct {
@@ -148,6 +149,26 @@ func RegisterUser(db *database.Database, logger *slog.Logger, ts *token.TokenSer
 		uu.validateUsername()
 		uu.validatePassword()
 		uu.validateEmail()
+
+		// Check for unique email
+		emailCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		var email string
+		emailRow := db.DBPool.QueryRow(emailCtx, `SELECT email FROM users WHERE email = $1`, uu.Email)
+
+		if err := emailRow.Scan(&email); err != nil {
+			if err != pgx.ErrNoRows {
+				logger.Error("failed to parse email during registration", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		if email != "" {
+			http.Error(w, "email already taken", http.StatusBadRequest)
+			return
+		}
 
 		if !uu.Valid {
 			logger.Warn("registration input validation failed", "reasons", uu.Reasons, "email", uu.Email)
@@ -316,7 +337,7 @@ func LogoutUser(db *database.Database, logger *slog.Logger, ts *token.TokenServi
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
 		_, err := db.DBPool.Exec(ctx, `DELETE FROM tokens WHERE user_id = $1 AND token_type = 'csrf' OR token_type = 'session'`, user.Id)
@@ -326,6 +347,7 @@ func LogoutUser(db *database.Database, logger *slog.Logger, ts *token.TokenServi
 			return
 		}
 
+		logger.Info("logged out", "email", user.Email)
 		w.WriteHeader(200)
 		fmt.Fprintln(w, "user logged out successfully")
 	})
