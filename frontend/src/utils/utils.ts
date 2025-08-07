@@ -31,3 +31,18 @@ export const isVerified = async () => {
     return false;
   }
 }
+
+export const getCSRFToken = (): string => {
+        const name = "csrf_token=";
+        const decoded = decodeURIComponent(document.cookie);
+        const cookies = decoded.split(';');
+
+        for (let cookie of cookies) {
+            cookie = cookie.trim();
+            if (cookie.startsWith(name)) {
+                return cookie.substring(name.length);
+            }
+        }
+
+        return "";
+    }

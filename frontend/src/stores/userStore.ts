@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { useConfigStore } from "./configStore";
 import { type User } from "@/types.ts"
+import { getCSRFToken } from "@/utils/utils";
 import router from "@/router";
 
 export const useUserStore = defineStore("user", () => {
@@ -131,21 +132,6 @@ export const useUserStore = defineStore("user", () => {
         } catch(err) {
             console.error(err);
         }
-    }
-
-    const getCSRFToken = (): string => {
-        const name = "csrf_token=";
-        const decoded = decodeURIComponent(document.cookie);
-        const cookies = decoded.split(';');
-
-        for (let cookie of cookies) {
-            cookie = cookie.trim();
-            if (cookie.startsWith(name)) {
-                return cookie.substring(name.length);
-            }
-        }
-
-        return "";
     }
 
     return {

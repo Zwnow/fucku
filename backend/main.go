@@ -18,6 +18,7 @@ import (
 	token "fucku/internal/tokens"
 	users "fucku/internal/users"
 	"fucku/pkg"
+	"fucku/pkg/characters"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
@@ -131,6 +132,21 @@ func run(ctx context.Context, w io.Writer) error {
 		RecoveryMiddleware(logger),
 		CSRFMiddleware(db, logger),
 		IsAuthenticatedMiddleware(db, logger),
+	))
+
+	// Duststicks routes
+	mux.Handle("GET /character", Chain(
+		characters.GetCharacterHandler(db),
+		RecoveryMiddleware(logger),
+		IsAuthenticatedMiddleware(db, logger),
+		IsVerifiedMiddleware(logger),
+	))
+
+	mux.Handle("POST /character", Chain(
+		characters.CreateCharacterHandler(db, logger),
+		RecoveryMiddleware(logger),
+		IsAuthenticatedMiddleware(db, logger),
+		IsVerifiedMiddleware(logger),
 	))
 
 	server := &http.Server{
