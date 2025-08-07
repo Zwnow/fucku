@@ -53,7 +53,7 @@ func (ts *TokenService) NewVerificationToken(userId string) (*Token, error) {
 		userId,
 		"email_verification",
 		uniqueToken,
-		time.Now().Add(time.Hour*12))
+		time.Now().Add(time.Hour*24))
 
 	var token Token
 	if err := row.Scan(
@@ -122,7 +122,7 @@ func (ts *TokenService) NewCSRFToken(userId string) (*Token, error) {
 
 	rawToken := make([]byte, 32)
 	if _, err := rand.Read(rawToken); err != nil {
-		return nil, err 
+		return nil, err
 	}
 
 	t := hmac.New(sha256.New, []byte(os.Getenv("CSRF_SECRET")))

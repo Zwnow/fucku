@@ -215,6 +215,62 @@ func RegisterUser(db *database.Database, logger *slog.Logger, ts *token.TokenSer
 	})
 }
 
+type VerificationCode struct {
+	Code string `json:"verification_code"`
+}
+
+func ConfirmEmail(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, ok := GetUserFromContext(r.Context())
+		if !ok {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
+
+		// Look for verification token in db
+		var t string
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		row := db.DBPool.QueryRow(ctx, `SELECT token FROM tokens WHERE token_type = 'email_verification' AND user_id = $1`, user.Id)
+		if err := row.Scan(&t); err != nil {
+			if err != pgx.ErrNoRows {
+				logger.Error("failed to parse token for email verification", "error", err)
+			}
+
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		// Validate token
+		var vc VerificationCode
+		err := utils.DecodeJSONBody(w, r, &vc)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			logger.Error("failed to parse verification code", "error", err)
+			return
+		}
+
+		if vc.Code != t {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			logger.Error("user provided invalid email verification code", "expected", t, "got", vc.Code, "email", user.Email)
+			return
+		}
+
+		// Set verified
+		_, err = db.DBPool.Exec(ctx, `UPDATE users SET verified = 1 WHERE id = $1`, user.Id)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			logger.Error("failed to update user", "error", err)
+			return
+		}
+
+		logger.Error("user verified", "email", user.Email)
+		w.WriteHeader(200)
+		fmt.Fprintln(w, "User verified")
+	})
+}
+
 func LoginUser(db *database.Database, logger *slog.Logger, ts *token.TokenService) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. validate password

@@ -38,6 +38,7 @@ const handleLogout = async () => {
     >
         <RouterLink to="/">Home</RouterLink>
         <RouterLink to="/login">Login</RouterLink>
+        <RouterLink to="/register">Register</RouterLink>
     </nav>
     <nav v-else
         class="flex flex-row gap-2"

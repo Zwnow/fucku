@@ -32,7 +32,7 @@ func (ac *AppConfig) StartConfigWorker() {
 			row := ac.DB.DBPool.QueryRow(ctx, `SELECT mailing_active FROM config WHERE id = 1;`)
 			if err := row.Scan(&ac.MailingActive); err != nil {
 				if err == pgx.ErrNoRows {
-					ac.DB.DBPool.Exec(ctx, `INSERT INTO config (mailing_active) VALUES (true)`)
+					ac.DB.DBPool.Exec(ctx, `INSERT INTO config (mailing_active) VALUES (false)`)
 				} else {
 					ac.Logger.Error("failed to read config from database", "error", err)
 				}

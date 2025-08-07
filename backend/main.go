@@ -19,6 +19,7 @@ import (
 	users "fucku/internal/users"
 	"fucku/pkg"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 )
 
@@ -102,15 +103,31 @@ func run(ctx context.Context, w io.Writer) error {
 	))
 
 	mux.Handle("GET /auth/status", Chain(
-		http.HandlerFunc(func (w http.ResponseWriter, r *http.Request) {
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
 		RecoveryMiddleware(logger),
 		IsAuthenticatedMiddleware(db, logger),
 	))
 
+	mux.Handle("GET /auth/verified", Chain(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+		RecoveryMiddleware(logger),
+		IsAuthenticatedMiddleware(db, logger),
+		IsVerifiedMiddleware(logger),
+	))
+
 	mux.Handle("POST /logout", Chain(
 		users.LogoutUser(db, logger, tokenService),
+		RecoveryMiddleware(logger),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
+
+	mux.Handle("POST /verify-email", Chain(
+		users.ConfirmEmail(db, logger),
 		RecoveryMiddleware(logger),
 		CSRFMiddleware(db, logger),
 		IsAuthenticatedMiddleware(db, logger),
@@ -195,7 +212,12 @@ func CSRFMiddleware(db *database.Database, logger *slog.Logger) Middleware {
 				`SELECT expires_at FROM tokens WHERE token = $1`, csrfToken.Value)
 
 			if err = row.Scan(&expiry); err != nil {
-				logger.Error("failed to parse expiry from db csrf token", "error", err)
+				if err == pgx.ErrNoRows {
+					http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+					return
+				}
+
+				logger.Error("failed to parse expiry from db csrf token", "error", err, "csrf_value", csrfToken.Value)
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				return
 			}
@@ -243,6 +265,26 @@ func IsAuthenticatedMiddleware(db *database.Database, logger *slog.Logger) Middl
 			ctx = context.WithValue(r.Context(), userKey, u)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func IsVerifiedMiddleware(logger *slog.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user, ok := users.GetUserFromContext(r.Context())
+			if !ok {
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				logger.Error("IsValidatedMiddleware failed to get user from request context")
+				return
+			}
+
+			if user.Verified == 0 {
+				http.Error(w, "user is not verified", http.StatusUnauthorized)
+				return
+			}
+
+			next.ServeHTTP(w, r)
 		})
 	}
 }

@@ -3,7 +3,8 @@ import HomePage from '@/pages/home.vue';
 import LoginPage from '@/pages/login.vue';
 import RegisterPage from '@/pages/register.vue';
 import ProfilePage from '@/pages/profile.vue';
-import { isAuthenticated } from '@/utils/utils';
+import VerifyEmailPage from '@/pages/email-verification.vue';
+import { isAuthenticated, isVerified } from '@/utils/utils';
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -14,6 +15,7 @@ const router = createRouter({
       component: HomePage,
       meta: {
         requiresAuth: false,
+        requiresVerified: false,
       }
     },
     {
@@ -22,6 +24,7 @@ const router = createRouter({
       component: LoginPage,
       meta: {
         requiresAuth: false,
+        requiresVerified: false,
       }
     },
     {
@@ -30,6 +33,16 @@ const router = createRouter({
       component: RegisterPage,
       meta: {
         requiresAuth: false,
+        requiresVerified: false,
+      }
+    },
+    {
+      path: "/verify-email",
+      name: "Email Verification",
+      component: VerifyEmailPage,
+      meta: {
+        requiresAuth: true,
+        requiresVerified: false,
       }
     },
     {
@@ -37,20 +50,28 @@ const router = createRouter({
       name: "Profile",
       component: ProfilePage,
       meta: {
-        requiresAuth: true,
+        requiresVerified: true,
       }
     },
   ],
 });
 
 router.beforeEach(async (to, from, next) => {
-  if (to.meta.requiresAuth) {
-    const isLoggedIn = await isAuthenticated();
-    if (!isLoggedIn) {
-      return next({ path: "/login" });
+    if (to.meta.requiresAuth) {
+        const isLoggedIn = await isAuthenticated();
+        if (!isLoggedIn) {
+            return next({ path: "/login" });
+        }
     }
-  }
-  next();
+
+    if (to.meta.requiresVerified) {
+        const verified = await isVerified();
+        if (!verified) {
+            return next({ path: "/verify-email"})
+        }
+    }
+
+    next();
 });
 
 export default router
