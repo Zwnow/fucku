@@ -117,6 +117,18 @@ func run(ctx context.Context, w io.Writer) error {
 		IsAuthenticatedMiddleware(db, logger),
 	))
 
+	mux.Handle("GET /genres", Chain(
+		songs.GetGenres(db, logger),
+		RecoveryMiddleware(logger),
+	))
+
+	mux.Handle("POST /genres", Chain(
+		songs.CreateGenre(db, logger),
+		RecoveryMiddleware(logger),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
+
 	mux.Handle("GET /songs", Chain(
 		songs.GetSongs(db, logger),
 		RecoveryMiddleware(logger),

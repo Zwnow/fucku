@@ -80,6 +80,13 @@ type Genre struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+func (g *Genre) validateGenreName(errors map[string]string) {
+	g.GenreName = strings.TrimSpace(g.GenreName)
+	if (len(g.GenreName) == 0) {
+		errors["genre_name"] = "no genre name provided"
+	}
+}
+
 type SpecialTag struct {
 	Id int `json:"id"`
 	Name string `json:"name"`
@@ -90,7 +97,7 @@ type SpecialTag struct {
 
 func GetSongs(db *database.Database, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 
 		// Pagination: default to page 1, 25 items per page
 		page := 1
@@ -275,6 +282,106 @@ func CreateSong(db *database.Database, logger *slog.Logger) http.Handler {
 
 
 		logger.Info("song created", "song", s, "id", id)
+
+		w.WriteHeader(201)
+		fmt.Fprintf(w, id)
+	})
+}
+
+func GetGenres(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		rows, err := db.DBPool.Query(ctx, `
+			SELECT id, genre_name, created_at, updated_at
+			FROM genres
+			ORDER BY genre_name ASC 
+		`)
+		if err != nil {
+			logger.Error("failed to fetch genres", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var genres []Genre
+		for rows.Next() {
+			var g Genre
+			if err := rows.Scan(&g.Id, &g.GenreName, &g.CreatedAt, &g.UpdatedAt); err != nil {
+				logger.Error("failed to scan genre row", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+			genres = append(genres, g)
+		}
+		if err := rows.Err(); err != nil {
+			logger.Error("row iteration error", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if len(genres) == 0 {
+			json.NewEncoder(w).Encode([]Genre{})
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(genres)
+	})
+}
+
+func CreateGenre(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var genre Genre
+		err := utils.DecodeJSONBody(w, r, &genre)
+		if err != nil {
+			var mr *utils.MalformedRequest
+			if errors.As(err, &mr) {
+				http.Error(w, mr.Msg, mr.Status)
+				return
+			} else {
+				logger.Error("error while decoding json body in create song", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		// Validation
+		errs := make(map[string]string)
+
+		genre.validateGenreName(errs)
+		if len(errs) != 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]any{
+				"errors": errs,
+			})
+			return
+		}
+		
+		// Insertion
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		var id string
+		row := db.DBPool.QueryRow(ctx, `
+			INSERT INTO genres (
+			genre_name
+			) VALUES ($1) 
+			RETURNING id
+			`, genre.GenreName)
+
+		if err := row.Scan(&id); err != nil {
+			logger.Error("error while trying to insert song into database", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+
+		logger.Info("genre created", "genre", genre, "id", id)
 
 		w.WriteHeader(201)
 		fmt.Fprintf(w, id)

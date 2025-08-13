@@ -18,39 +18,30 @@ export type Song = {
 }
 
 export type Genre = {
-    id: number;
+    id: number|null;
     genre_name: string;
-    created_at: string;
-    updated_at: string;
+    created_at: string|null;
+    updated_at: string|null;
 }
 
 export type SpecialTags = {
     id: number;
     name: string;
     description: string | null;
-    created_at: string;
-    updated_at: string;
+    created_at: string|null;
+    updated_at: string|null;
 }
 
 export const useSongStore = defineStore("songs", () => {
     const songs = ref<Song[]>([]);
+    const genres = ref<Genre[]>([]);
 
     const configStore = useConfigStore();
 
     const createSong = async (song: Song) => {
         try {
-            const response = await fetch(`${configStore.baseUrl}/songs`, {
-                credentials: "include",
-                method: "POST",
-                headers: {
-                    "X-CSRF-Token": getCSRFToken(),
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(song)
-            });
-
+            const response = await POST_REQUEST(song, "/songs");
             console.log(response);
-
         } catch(err) {
             console.error(err);
         }
@@ -71,9 +62,48 @@ export const useSongStore = defineStore("songs", () => {
         }
     }
 
+    const createGenre = async (genre: Genre) => {
+        try {
+            const response = await POST_REQUEST(genre, "/genres");
+            console.log(response);
+        } catch(err) {
+            console.error(err);
+        }
+    }
+
+    const getGenres = async () => {
+        try {
+            const response = await fetch(`${configStore.baseUrl}/genres`, {
+                //credentials: "include",
+                method: "GET",
+            });
+
+            if (response.status === 200) {
+                genres.value = await response.json();
+            }
+        } catch(err) {
+            console.error(err);
+        }
+    }
+
+    const POST_REQUEST = async (item: Song|Genre, path: string) => {
+        return await fetch(`${configStore.baseUrl}${path}`, {
+            credentials: "include",
+            method: "POST",
+            headers: {
+                "X-CSRF-Token": getCSRFToken(),
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(item)
+        })
+    }
+
     return {
         songs,
+        genres,
         createSong,
         getSongs,
+        createGenre,
+        getGenres,
     }
 });
