@@ -187,7 +187,7 @@ func RegisterUser(db *database.Database, logger *slog.Logger, ts *token.TokenSer
 
 		logger.Debug("created verification token", "token", token.Token, "user_id", id)
 
-		go mailer.SendRegistrationMail(uu.Username, uu.Email, token.Token)
+		//go mailer.SendRegistrationMail(uu.Username, uu.Email, token.Token)
 
 		w.WriteHeader(200)
 		fmt.Fprintln(w, "User registered successfully")

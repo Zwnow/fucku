@@ -15,6 +15,7 @@ import (
 	config "fucku/internal/config"
 	database "fucku/internal/database"
 	mailer "fucku/internal/mailer"
+	"fucku/internal/songs"
 	token "fucku/internal/tokens"
 	users "fucku/internal/users"
 	"fucku/pkg"
@@ -94,26 +95,43 @@ func run(ctx context.Context, w io.Writer) error {
 	mux.Handle("POST /register", Chain(
 		users.RegisterUser(db, logger, tokenService, mailer),
 		RecoveryMiddleware(logger),
-		CORSMiddleware(),
 	))
 
 	mux.Handle("POST /login", Chain(
 		users.LoginUser(db, logger, tokenService),
 		RecoveryMiddleware(logger),
-		CORSMiddleware(),
+	))
+
+	mux.Handle("GET /auth/status", Chain(
+		http.HandlerFunc(func (w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+		RecoveryMiddleware(logger),
+		IsAuthenticatedMiddleware(db, logger),
 	))
 
 	mux.Handle("POST /logout", Chain(
 		users.LogoutUser(db, logger, tokenService),
 		RecoveryMiddleware(logger),
-		CORSMiddleware(),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
+
+	mux.Handle("GET /songs", Chain(
+		songs.GetSongs(db, logger),
+		RecoveryMiddleware(logger),
+	))
+
+	mux.Handle("POST /songs", Chain(
+		songs.CreateSong(db, logger),
+		RecoveryMiddleware(logger),
 		CSRFMiddleware(db, logger),
 		IsAuthenticatedMiddleware(db, logger),
 	))
 
 	server := &http.Server{
 		Addr:    ":3000",
-		Handler: mux,
+		Handler: CORSMiddleware()(mux),
 	}
 
 	// Run in a go routine to cleanly shutdown in case of failure
@@ -245,8 +263,13 @@ func IsAuthenticatedMiddleware(db *database.Database, logger *slog.Logger) Middl
 func CORSMiddleware() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add("Access-Control-Allow-Origin", "http://localhost:5173")
+			w.Header().Add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+			w.Header().Add("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token")
+			w.Header().Add("Access-Control-Allow-Credentials", "true")
+
 			if r.Method == "OPTIONS" {
-				w.WriteHeader(200)
+				w.WriteHeader(http.StatusOK)
 				return
 			}
 

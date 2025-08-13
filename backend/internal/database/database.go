@@ -102,6 +102,60 @@ func SetupTables(db *Database) error {
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );`,
 		},
+		{
+			name: "song of the day table",
+			sql: `
+                CREATE TABLE IF NOT EXISTS songs (
+                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+					song_name TEXT NOT NULL,
+					album_name TEXT NOT NULL,
+					artist TEXT NOT NULL,
+					featuring_artist TEXT DEFAULT NULL,
+                    spotify_embed_url TEXT NOT NULL,
+					reason TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );`,
+		},
+		{
+			name: "genre tags",
+			sql: `
+                CREATE TABLE IF NOT EXISTS genres (
+					id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+					genre_name TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );`,
+		},
+		{
+			name: "special tags",
+			sql: `
+                CREATE TABLE IF NOT EXISTS special_tags (
+					id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+					name TEXT NOT NULL,
+					description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );`,
+		},
+		{
+			name: "song genre mapping tags",
+			sql: `
+                CREATE TABLE IF NOT EXISTS song_genres (
+					song_id UUID NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+					genre_id INTEGER NOT NULL REFERENCES genres(id) ON DELETE CASCADE,
+					PRIMARY KEY (song_id, genre_id)
+                );`,
+		},
+		{
+			name: "song special tag mapping",
+			sql: `
+                CREATE TABLE IF NOT EXISTS song_special_tags (
+					song_id UUID NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+					tag_id INTEGER NOT NULL REFERENCES special_tags(id) ON DELETE CASCADE,
+					PRIMARY KEY (song_id, tag_id)
+                );`,
+		},
 	}
 
 	for _, q := range queries {
