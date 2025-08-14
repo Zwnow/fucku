@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { useSongStore, type Song, type Genre } from '@/stores/songStore';
+import { useSongStore, type Song, type Genre, type SpecialTag } from '@/stores/songStore';
 import { onMounted, ref } from 'vue';
 
 onMounted(async () => {
   await songStore.getGenres();
+  await songStore.getTags();
 });
 
 const songStore = useSongStore();
@@ -25,6 +26,14 @@ const song = ref<Song>({
 const genre = ref<Genre>({
   id: null,
   genre_name: "",
+  created_at: null,
+  updated_at: null,
+});
+
+const tag = ref<SpecialTag>({
+  id: null,
+  name: "",
+  description: "",
   created_at: null,
   updated_at: null,
 });
@@ -51,6 +60,18 @@ const handleSubmitGenre = async () => {
   processing.value = true;
 
   await songStore.createGenre(genre.value);
+
+  processing.value = false;
+}
+
+const handleSubmitTag = async () => {
+  if (processing.value === true) {
+    return;
+  }
+
+  processing.value = true;
+
+  await songStore.createTag(tag.value);
 
   processing.value = false;
 }
@@ -105,6 +126,23 @@ const handleSubmitGenre = async () => {
         id="genre_name" v-model="genre.genre_name"
         required
         ></input>
+      </fieldset>
+      <button type="submit">Ok</button>
+    </form>
+
+    <form class="max-w-md border rounded-md flex flex-col gap-2" @submit.prevent="() => handleSubmitTag()">
+      <p class="font-bold underline">Add Tag</p>
+      <fieldset class="flex flex-col">
+        <label for="name">Tag Name</label>
+        <input 
+        id="name" v-model="tag.name"
+        required
+        ></input>
+        <label for="tag_description">Tag Description</label>
+        <textarea
+        id="tag_description" v-model="tag.description"
+        required
+        ></textarea>
       </fieldset>
       <button type="submit">Ok</button>
     </form>

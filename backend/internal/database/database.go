@@ -122,7 +122,7 @@ func SetupTables(db *Database) error {
 			sql: `
                 CREATE TABLE IF NOT EXISTS genres (
 					id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-					genre_name TEXT NOT NULL,
+					genre_name TEXT NOT NULL UNIQUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );`,
@@ -132,7 +132,7 @@ func SetupTables(db *Database) error {
 			sql: `
                 CREATE TABLE IF NOT EXISTS special_tags (
 					id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-					name TEXT NOT NULL,
+					name TEXT NOT NULL UNIQUE,
 					description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

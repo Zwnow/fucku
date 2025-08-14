@@ -11,25 +11,25 @@ export type Song = {
     featuring_artist: string | null;
     spotify_embed_url: string;
     reason: string;
-    genres: Genre[]|null;
-    special_tags: SpecialTags[] | null;
-    created_at: string|null;
-    updated_at: string|null;
+    genres: Genre[] | null;
+    special_tags: SpecialTag[] | null;
+    created_at: string | null;
+    updated_at: string | null;
 }
 
 export type Genre = {
-    id: number|null;
+    id: number | null;
     genre_name: string;
-    created_at: string|null;
-    updated_at: string|null;
+    created_at: string | null;
+    updated_at: string | null;
 }
 
-export type SpecialTags = {
-    id: number;
+export type SpecialTag = {
+    id: number | null;
     name: string;
     description: string | null;
-    created_at: string|null;
-    updated_at: string|null;
+    created_at: string | null;
+    updated_at: string | null;
 }
 
 export const useSongStore = defineStore("songs", () => {
@@ -86,7 +86,30 @@ export const useSongStore = defineStore("songs", () => {
         }
     }
 
-    const POST_REQUEST = async (item: Song|Genre, path: string) => {
+    const createTag = async (tag: SpecialTag) => {
+        try {
+            const response = await POST_REQUEST(tag, "/tags");
+            console.log(response);
+        } catch(err) {
+            console.error(err);
+        }
+    }
+
+    const getTags = async () => {
+        try {
+            const response = await fetch(`${configStore.baseUrl}/tags`, {
+                method: "GET",
+            });
+
+            if (response.status === 200) {
+                genres.value = await response.json();
+            }
+        } catch(err) {
+            console.error(err);
+        }
+    }
+
+    const POST_REQUEST = async (item: Song|Genre|SpecialTag, path: string) => {
         return await fetch(`${configStore.baseUrl}${path}`, {
             credentials: "include",
             method: "POST",
@@ -105,5 +128,7 @@ export const useSongStore = defineStore("songs", () => {
         getSongs,
         createGenre,
         getGenres,
+        createTag,
+        getTags,
     }
 });
