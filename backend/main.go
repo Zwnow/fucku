@@ -103,7 +103,7 @@ func run(ctx context.Context, w io.Writer) error {
 	))
 
 	mux.Handle("GET /auth/status", Chain(
-		http.HandlerFunc(func (w http.ResponseWriter, r *http.Request) {
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
 		RecoveryMiddleware(logger),
@@ -129,6 +129,20 @@ func run(ctx context.Context, w io.Writer) error {
 		IsAuthenticatedMiddleware(db, logger),
 	))
 
+	mux.Handle("POST /genres/{song}/{tag}", Chain(
+		songs.AssignGenre(db, logger),
+		RecoveryMiddleware(logger),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
+
+	mux.Handle("DELETE /genres/{song}/{tag}", Chain(
+		songs.UnassignGenre(db, logger),
+		RecoveryMiddleware(logger),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
+
 	mux.Handle("GET /songs", Chain(
 		songs.GetSongs(db, logger),
 		RecoveryMiddleware(logger),
@@ -136,6 +150,32 @@ func run(ctx context.Context, w io.Writer) error {
 
 	mux.Handle("POST /songs", Chain(
 		songs.CreateSong(db, logger),
+		RecoveryMiddleware(logger),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
+
+	mux.Handle("GET /tags", Chain(
+		songs.GetSpecialTags(db, logger),
+		RecoveryMiddleware(logger),
+	))
+
+	mux.Handle("POST /tags", Chain(
+		songs.CreateSpecialTag(db, logger),
+		RecoveryMiddleware(logger),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
+
+	mux.Handle("POST /tags/{song}/{tag}", Chain(
+		songs.AssignTag(db, logger),
+		RecoveryMiddleware(logger),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
+
+	mux.Handle("DELETE /tags/{song}/{tag}", Chain(
+		songs.UnassignTag(db, logger),
 		RecoveryMiddleware(logger),
 		CSRFMiddleware(db, logger),
 		IsAuthenticatedMiddleware(db, logger),

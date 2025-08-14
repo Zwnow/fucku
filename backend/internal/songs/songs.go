@@ -5,54 +5,55 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	database "fucku/internal/database"
-	utils "fucku/internal/utils"
 	"log/slog"
 	"net/http"
 	"regexp"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
+
+	database "fucku/internal/database"
+	utils "fucku/internal/utils"
 )
 
 type Song struct {
-	Id string `json:"id"`
-	SongName string `json:"song_name"`
-	AlbumName string `json:"album_name"`
-	Artist string `json:"artist"`
-	FeaturingArtist string `json:"featuring_artist"`
-	SpotifyEmbedUrl string `json:"spotify_embed_url"`
-	Reason string `json:"reason"`
-	Genres *[]Genre `json:"genres"`
-	SpecialTags *[]SpecialTag `json:"special_tags"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Id              string        `json:"id"`
+	SongName        string        `json:"song_name"`
+	AlbumName       string        `json:"album_name"`
+	Artist          string        `json:"artist"`
+	FeaturingArtist string        `json:"featuring_artist"`
+	SpotifyEmbedUrl string        `json:"spotify_embed_url"`
+	Reason          string        `json:"reason"`
+	Genres          *[]Genre      `json:"genres"`
+	SpecialTags     *[]SpecialTag `json:"special_tags"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
 }
 
 func (s *Song) validateSongName(errors map[string]string) {
 	s.SongName = strings.TrimSpace(s.SongName)
-	if (len(s.SongName) == 0) {
+	if len(s.SongName) == 0 {
 		errors["song_name"] = "no song name provided"
 	}
-} 
+}
 
 func (s *Song) validateAlbumName(errors map[string]string) {
 	s.AlbumName = strings.TrimSpace(s.AlbumName)
-	if (len(s.AlbumName) == 0) {
+	if len(s.AlbumName) == 0 {
 		errors["album_name"] = "no album name provided"
 	}
-} 
+}
 
 func (s *Song) validateArtistName(errors map[string]string) {
 	s.Artist = strings.TrimSpace(s.Artist)
-	if (len(s.Artist) == 0) {
+	if len(s.Artist) == 0 {
 		errors["aritst"] = "no artist name provided"
 	}
-} 
+}
 
 func (s *Song) validateSpotifyEmbedUrl(errors map[string]string) {
 	s.SpotifyEmbedUrl = strings.TrimSpace(s.SpotifyEmbedUrl)
-	if (len(s.SpotifyEmbedUrl) == 0) {
+	if len(s.SpotifyEmbedUrl) == 0 {
 		errors["spotify_embed"] = "no spotify embed url provided"
 	}
 
@@ -64,35 +65,42 @@ func (s *Song) validateSpotifyEmbedUrl(errors map[string]string) {
 	} else {
 		errors["spotify_embed_2"] = "no source found"
 	}
-} 
+}
 
 func (s *Song) validateReason(errors map[string]string) {
 	s.Reason = strings.TrimSpace(s.Reason)
-	if (len(s.Reason) == 0) {
+	if len(s.Reason) == 0 {
 		errors["reason"] = "no reason provided"
 	}
-} 
+}
 
 type Genre struct {
-	Id int `json:"id"`
-	GenreName string `json:"genre_name"`
+	Id        int       `json:"id"`
+	GenreName string    `json:"genre_name"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (g *Genre) validateGenreName(errors map[string]string) {
 	g.GenreName = strings.TrimSpace(g.GenreName)
-	if (len(g.GenreName) == 0) {
+	if len(g.GenreName) == 0 {
 		errors["genre_name"] = "no genre name provided"
 	}
 }
 
 type SpecialTag struct {
-	Id int `json:"id"`
-	Name string `json:"name"`
-	Description string `json:"description"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Id          int       `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (st *SpecialTag) validateName(errors map[string]string) {
+	st.Name = strings.TrimSpace(st.Name)
+	if len(st.Name) == 0 {
+		errors["name"] = "no tag name provided"
+	}
 }
 
 func GetSongs(db *database.Database, logger *slog.Logger) http.Handler {
@@ -256,7 +264,7 @@ func CreateSong(db *database.Database, logger *slog.Logger) http.Handler {
 
 			return
 		}
-		
+
 		// Insertion
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
@@ -280,11 +288,10 @@ func CreateSong(db *database.Database, logger *slog.Logger) http.Handler {
 			return
 		}
 
-
 		logger.Info("song created", "song", s, "id", id)
 
 		w.WriteHeader(201)
-		fmt.Fprintf(w, id)
+		fmt.Fprint(w, id)
 	})
 }
 
@@ -361,12 +368,12 @@ func CreateGenre(db *database.Database, logger *slog.Logger) http.Handler {
 			})
 			return
 		}
-		
+
 		// Insertion
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		var id string
+		var id int
 		row := db.DBPool.QueryRow(ctx, `
 			INSERT INTO genres (
 			genre_name
@@ -380,10 +387,213 @@ func CreateGenre(db *database.Database, logger *slog.Logger) http.Handler {
 			return
 		}
 
-
 		logger.Info("genre created", "genre", genre, "id", id)
 
 		w.WriteHeader(201)
-		fmt.Fprintf(w, id)
+		fmt.Fprint(w, id)
+	})
+}
+
+func CreateSpecialTag(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var tag SpecialTag
+		err := utils.DecodeJSONBody(w, r, &tag)
+		if err != nil {
+			var mr *utils.MalformedRequest
+			if errors.As(err, &mr) {
+				http.Error(w, mr.Msg, mr.Status)
+				return
+			} else {
+				logger.Error("error while decoding json body in create song", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		// Validation
+		errs := make(map[string]string)
+
+		tag.validateName(errs)
+		if len(errs) != 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]any{
+				"errors": errs,
+			})
+			return
+		}
+
+		// Insertion
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		var id int
+		row := db.DBPool.QueryRow(ctx, `
+			INSERT INTO special_tags (
+            name,
+            description
+			) VALUES ($1, $2) 
+			RETURNING id
+			`, tag.Name, tag.Description)
+
+		if err := row.Scan(&id); err != nil {
+			logger.Error("error while trying to insert song into database", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		logger.Info("tag created", "tag", tag, "id", id)
+
+		w.WriteHeader(201)
+		fmt.Fprint(w, id)
+	})
+}
+
+func GetSpecialTags(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		rows, err := db.DBPool.Query(ctx, `
+			SELECT id, name, description, created_at, updated_at
+			FROM special_tags
+			ORDER BY name ASC 
+		`)
+		if err != nil {
+			logger.Error("failed to fetch tags", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var tags []SpecialTag
+		for rows.Next() {
+			var tag SpecialTag
+			if err := rows.Scan(&tag.Id, &tag.Name, &tag.Description, &tag.CreatedAt, &tag.UpdatedAt); err != nil {
+				logger.Error("failed to scan genre row", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+			tags = append(tags, tag)
+		}
+		if err := rows.Err(); err != nil {
+			logger.Error("row iteration error", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		if len(tags) == 0 {
+			json.NewEncoder(w).Encode([]Genre{})
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(tags)
+	})
+}
+
+func AssignGenre(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		songId := r.URL.Query().Get("song")
+		genreId := r.URL.Query().Get("genre")
+
+		if len(songId) == 0 || len(genreId) == 0 {
+			http.Error(w, "required query parameters (song, genre) not found", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		_, err := db.DBPool.Exec(ctx, `
+            INSERT INTO song_genres (song_id, genre_id) VALUES ($1, $2)
+            `, songId, genreId)
+		if err != nil {
+			logger.Error("failed to assign genre to song", "song", songId, "genre", genreId, "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(200)
+	})
+}
+
+func AssignTag(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		songId := r.URL.Query().Get("song")
+		tagId := r.URL.Query().Get("tag")
+
+		if len(songId) == 0 || len(tagId) == 0 {
+			http.Error(w, "required query parameters (song, tag) not found", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		_, err := db.DBPool.Exec(ctx, `
+            INSERT INTO song_special_tags (song_id, tag_id) VALUES ($1, $2)
+            `, songId, tagId)
+		if err != nil {
+			logger.Error("failed to assign tag to song", "song", songId, "tag", tagId, "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(200)
+	})
+}
+
+func UnassignGenre(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		songId := r.URL.Query().Get("song")
+		genreId := r.URL.Query().Get("genre")
+
+		if len(songId) == 0 || len(genreId) == 0 {
+			http.Error(w, "required query parameters (song, genre) not found", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		_, err := db.DBPool.Exec(ctx, `
+            DELETE FROM song_genres WHERE song_id = $1 AND genre_id = $2
+            `, songId, genreId)
+		if err != nil {
+			logger.Error("failed to remove genre from song", "song", songId, "genre", genreId, "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(200)
+	})
+}
+
+func UnassignTag(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		songId := r.URL.Query().Get("song")
+		tagId := r.URL.Query().Get("tag")
+
+		if len(songId) == 0 || len(tagId) == 0 {
+			http.Error(w, "required query parameters (song, tag) not found", http.StatusBadRequest)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		_, err := db.DBPool.Exec(ctx, `
+            DELETE FROM song_special_tags WHERE song_id = $1 AND tag_id = $2)
+            `, songId, tagId)
+		if err != nil {
+			logger.Error("failed to assign tag to song", "song", songId, "tag", tagId, "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(200)
 	})
 }
