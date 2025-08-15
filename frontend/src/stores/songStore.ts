@@ -35,15 +35,22 @@ export type SpecialTag = {
 export const useSongStore = defineStore("songs", () => {
     const songs = ref<Song[]>([]);
     const genres = ref<Genre[]>([]);
+    const tags = ref<SpecialTag[]>([]);
 
     const configStore = useConfigStore();
 
-    const createSong = async (song: Song) => {
+    const createSong = async (song: Song): Promise<string | null> => {
         try {
             const response = await POST_REQUEST(song, "/songs");
-            console.log(response);
+
+            if (response.status === 201) {
+                return await response.text();
+            } else {
+                return null;
+            }
         } catch(err) {
             console.error(err);
+            return null;
         }
     }
 
@@ -71,6 +78,15 @@ export const useSongStore = defineStore("songs", () => {
         }
     }
 
+    const massAssignGenres = async (id: number, genres: number[]) => {
+        try {
+            const response = await POST_REQUEST(genres, `/genres/${id}?song=${id}`);
+            console.log(response);
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
     const getGenres = async () => {
         try {
             const response = await fetch(`${configStore.baseUrl}/genres`, {
@@ -80,6 +96,7 @@ export const useSongStore = defineStore("songs", () => {
 
             if (response.status === 200) {
                 genres.value = await response.json();
+                console.log(genres.value);
             }
         } catch(err) {
             console.error(err);
@@ -102,14 +119,14 @@ export const useSongStore = defineStore("songs", () => {
             });
 
             if (response.status === 200) {
-                genres.value = await response.json();
+                tags.value = await response.json();
             }
         } catch(err) {
             console.error(err);
         }
     }
 
-    const POST_REQUEST = async (item: Song|Genre|SpecialTag, path: string) => {
+    const POST_REQUEST = async (item: Song|Genre|SpecialTag|number[], path: string) => {
         return await fetch(`${configStore.baseUrl}${path}`, {
             credentials: "include",
             method: "POST",
@@ -130,5 +147,6 @@ export const useSongStore = defineStore("songs", () => {
         getGenres,
         createTag,
         getTags,
+        massAssignGenres,
     }
 });

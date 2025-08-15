@@ -520,6 +520,39 @@ func AssignGenre(db *database.Database, logger *slog.Logger) http.Handler {
 	})
 }
 
+func MassAssignGenres(db *database.Database, logger *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		songId := r.URL.Query().Get("song")
+		if len(songId) == 0 {
+			http.Error(w, "required query parameters (song, genre) not found", http.StatusBadRequest)
+			return
+		}
+
+		var genres []int
+		err := utils.DecodeJSONBody(w, r, &genres)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		for _, genre := range genres {
+			_, err := db.DBPool.Exec(ctx, `
+                INSERT INTO song_genres (song_id, genre_id) VALUES ($1, $2)
+                `, songId, genre)
+			if err != nil {
+				logger.Error("failed to assign genre to song", "song", songId, "genre", genre, "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		w.WriteHeader(200)
+	})
+}
+
 func AssignTag(db *database.Database, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		songId := r.URL.Query().Get("song")

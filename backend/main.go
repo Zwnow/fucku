@@ -129,6 +129,13 @@ func run(ctx context.Context, w io.Writer) error {
 		IsAuthenticatedMiddleware(db, logger),
 	))
 
+	mux.Handle("POST /genres/{song}", Chain(
+		songs.MassAssignGenres(db, logger),
+		RecoveryMiddleware(logger),
+		CSRFMiddleware(db, logger),
+		IsAuthenticatedMiddleware(db, logger),
+	))
+
 	mux.Handle("POST /genres/{song}/{tag}", Chain(
 		songs.AssignGenre(db, logger),
 		RecoveryMiddleware(logger),
